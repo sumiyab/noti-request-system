@@ -5,7 +5,7 @@ import {
   type SQSClient,
 } from '@aws-sdk/client-sqs';
 import type { Context, SQSEvent, SQSRecord } from 'aws-lambda';
-import { handler as processNotifications } from '../src/handlers/queue/processNotifications';
+import { processNotifications } from '../src/handlers';
 
 type Options = { client: SQSClient; queueUrl: string; log: (msg: string) => void; signal?: AbortSignal };
 
@@ -41,7 +41,7 @@ export const pollForever = async ({ client, queueUrl, log, signal }: Options) =>
       );
       if (Messages.length === 0) continue;
 
-      const result = await processNotifications(toEvent(Messages), {} as Context, () => {});
+      const result = await processNotifications.handler(toEvent(Messages), {} as Context, () => {});
       const failed = new Set((result?.batchItemFailures ?? []).map((f) => f.itemIdentifier));
       const succeeded = Messages.filter((m) => !failed.has(m.MessageId ?? ''));
       log(`[worker] batch of ${Messages.length}: ${succeeded.length} done, ${failed.size} to retry`);

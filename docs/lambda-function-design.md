@@ -79,12 +79,13 @@ backend/
 ├── src/
 │   ├── deps.ts                     builds the real dependency set once per container (module scope)
 │   ├── handlers/
+│   │   ├── index.ts                    export * as createNotification from './http/createNotification' …
 │   │   ├── http/
-│   │   │   ├── createNotification.ts
-│   │   │   ├── listNotifications.ts
-│   │   │   └── getNotification.ts
+│   │   │   ├── createNotification/     handler.ts (createHandler + handler) · index.ts (re-export)
+│   │   │   ├── listNotifications/
+│   │   │   └── getNotification/
 │   │   └── queue/
-│   │       └── processNotifications.ts
+│   │       └── processNotifications/
 │   ├── services/
 │   │   ├── createNotification.ts
 │   │   ├── listNotifications.ts
@@ -154,7 +155,7 @@ export const handler = httpHandler(async (req) => {
 The envelope (`{ data }` / `{ error: { code, message, details?, requestId } }`) is produced only here, so no
 handler can get it wrong.
 
-### SQS — `handlers/queue/processNotifications.ts`
+### SQS — `handlers/queue/processNotifications/`
 
 ```ts
 export const handler: SQSHandler = async (event) => {
@@ -268,7 +269,7 @@ build:
 
 functions:
   createNotification:
-    handler: src/handlers/http/createNotification.handler
+    handler: src/handlers/http/createNotification/index.handler
     events: [{ httpApi: { method: POST, path: /notifications } }]
     environment: { QUEUE_URL: !Ref NotificationRequestsQueue }
     iam:
@@ -278,7 +279,7 @@ functions:
           - { Effect: Allow, Action: [sqs:SendMessage], Resource: !GetAtt NotificationRequestsQueue.Arn }
 
   listNotifications:
-    handler: src/handlers/http/listNotifications.handler
+    handler: src/handlers/http/listNotifications/index.handler
     events: [{ httpApi: { method: GET, path: /notifications } }]
     iam:
       role:
@@ -290,7 +291,7 @@ functions:
               - !Sub '${NotificationRequestsTable.Arn}/index/byUser'
 
   getNotification:
-    handler: src/handlers/http/getNotification.handler
+    handler: src/handlers/http/getNotification/index.handler
     events: [{ httpApi: { method: GET, path: /notifications/{id} } }]
     iam:
       role:
@@ -298,7 +299,7 @@ functions:
           - { Effect: Allow, Action: [dynamodb:GetItem], Resource: !GetAtt NotificationRequestsTable.Arn }
 
   processNotifications:
-    handler: src/handlers/queue/processNotifications.handler
+    handler: src/handlers/queue/processNotifications/index.handler
     events:
       - sqs:
           arn: !GetAtt NotificationRequestsQueue.Arn

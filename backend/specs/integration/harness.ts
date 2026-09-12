@@ -3,10 +3,12 @@ import { PurgeQueueCommand, ReceiveMessageCommand, SQSClient, type Message } fro
 import type { Context, SQSEvent, SQSRecord } from 'aws-lambda';
 import { ensureTable } from '../../local/table';
 import { buildDeps, type Deps } from '../../src/deps';
-import { createHandler as createCreate } from '../../src/handlers/http/createNotification';
-import { createHandler as createGet } from '../../src/handlers/http/getNotification';
-import { createHandler as createList } from '../../src/handlers/http/listNotifications';
-import { createHandler as createWorker } from '../../src/handlers/queue/processNotifications';
+import {
+  createNotification,
+  getNotification,
+  listNotifications,
+  processNotifications,
+} from '../../src/handlers';
 import { loadConfig } from '../../src/lib/config';
 import { context, httpEvent, parseResponse } from '../helpers/events';
 
@@ -25,10 +27,10 @@ export const harness = () => {
   };
 
   const handlers = {
-    create: createCreate(() => deps),
-    list: createList(() => deps),
-    get: createGet(() => deps),
-    worker: createWorker(() => deps),
+    create: createNotification.createHandler(() => deps),
+    list: listNotifications.createHandler(() => deps),
+    get: getNotification.createHandler(() => deps),
+    worker: processNotifications.createHandler(() => deps),
   };
 
   const call = async (handler: (typeof handlers)['create'], event: ReturnType<typeof httpEvent>) =>

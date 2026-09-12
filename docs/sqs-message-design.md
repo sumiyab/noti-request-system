@@ -73,7 +73,7 @@ request's three attempts.
 ```yaml
 functions:
   processNotifications:
-    handler: src/handlers/queue/processNotifications.handler
+    handler: src/handlers/queue/processNotifications/index.handler
     timeout: 10
     events:
       - sqs:

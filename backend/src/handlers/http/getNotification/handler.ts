@@ -1,7 +1,7 @@
 import { notificationIdSchema } from '@noti/shared';
-import { getDeps, type Deps } from '../../deps';
-import { httpHandler, parseWith } from '../../lib/http';
-import { getNotification } from '../../services/getNotification';
+import { getDeps, type Deps } from '../../../deps';
+import { httpHandler, parseWith } from '../../../lib/http';
+import { getNotification } from '../../../services/getNotification';
 
 export const createHandler = (deps: () => Deps) =>
   httpHandler(

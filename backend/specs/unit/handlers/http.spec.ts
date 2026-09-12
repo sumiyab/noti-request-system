@@ -1,19 +1,19 @@
-import { createHandler as createCreate } from '../../../src/handlers/http/createNotification';
-import { createHandler as createGet } from '../../../src/handlers/http/getNotification';
-import { createHandler as createList } from '../../../src/handlers/http/listNotifications';
+import { createNotification, getNotification, listNotifications } from '../../../src/handlers';
 import { context, httpEvent, parseResponse } from '../../helpers/events';
 import { ID, USER_ID, emailInput, stored } from '../../helpers/fixtures';
 import { makeDeps, transitioned } from '../../helpers/mocks';
 
-const invoke = async (handler: ReturnType<typeof createCreate>, event: ReturnType<typeof httpEvent>) =>
-  parseResponse(await handler(event, context, () => {}));
+const invoke = async (
+  handler: ReturnType<typeof createNotification.createHandler>,
+  event: ReturnType<typeof httpEvent>,
+) => parseResponse(await handler(event, context, () => {}));
 
 describe('POST /notifications', () => {
   test('202 with Location and the stored item', async () => {
     const deps = makeDeps();
     deps.repo.transition.mockResolvedValueOnce(transitioned(stored({ status: 'QUEUED' })));
     const res = await invoke(
-      createCreate(() => deps),
+      createNotification.createHandler(() => deps),
       httpEvent({ method: 'POST', body: emailInput }),
     );
 
@@ -25,7 +25,7 @@ describe('POST /notifications', () => {
   test('400 VALIDATION_ERROR when userId is missing', async () => {
     const { userId: _userId, ...body } = emailInput;
     const res = await invoke(
-      createCreate(() => makeDeps()),
+      createNotification.createHandler(() => makeDeps()),
       httpEvent({ method: 'POST', body }),
     );
     expect(res.statusCode).toBe(400);
@@ -36,7 +36,7 @@ describe('POST /notifications', () => {
 
   test('400 VALIDATION_ERROR with one detail per field', async () => {
     const res = await invoke(
-      createCreate(() => makeDeps()),
+      createNotification.createHandler(() => makeDeps()),
       httpEvent({
         method: 'POST',
         body: { userId: USER_ID, channel: 'EMAIL', recipient: 'nope', subject: '', message: 'x' },
@@ -56,7 +56,7 @@ describe('POST /notifications', () => {
 
   test('400 INVALID_JSON', async () => {
     const res = await invoke(
-      createCreate(() => makeDeps()),
+      createNotification.createHandler(() => makeDeps()),
       httpEvent({ method: 'POST', rawBody: '{oops' }),
     );
     expect(res.statusCode).toBe(400);
@@ -68,7 +68,7 @@ describe('POST /notifications', () => {
     deps.queue.send.mockRejectedValueOnce(new Error('down'));
     deps.repo.transition.mockResolvedValueOnce(transitioned(stored({ status: 'FAILED' })));
     const res = await invoke(
-      createCreate(() => deps),
+      createNotification.createHandler(() => deps),
       httpEvent({ method: 'POST', body: emailInput }),
     );
     expect(res.statusCode).toBe(503);
@@ -81,7 +81,7 @@ describe('GET /notifications', () => {
     const deps = makeDeps();
     deps.repo.list.mockResolvedValueOnce({ data: [stored()], nextCursor: null });
     const res = await invoke(
-      createList(() => deps),
+      listNotifications.createHandler(() => deps),
       httpEvent({}),
     );
     expect(res.statusCode).toBe(200);
@@ -92,7 +92,7 @@ describe('GET /notifications', () => {
   test('passes limit, cursor and userId through validated', async () => {
     const deps = makeDeps();
     const res = await invoke(
-      createList(() => deps),
+      listNotifications.createHandler(() => deps),
       httpEvent({ query: { limit: '5', cursor: 'abc', userId: ` ${USER_ID} ` } }),
     );
     expect(res.statusCode).toBe(200);
@@ -101,7 +101,7 @@ describe('GET /notifications', () => {
 
   test('400 for a bad userId', async () => {
     const res = await invoke(
-      createList(() => makeDeps()),
+      listNotifications.createHandler(() => makeDeps()),
       httpEvent({ query: { userId: 'has space' } }),
     );
     expect(res.statusCode).toBe(400);
@@ -110,7 +110,7 @@ describe('GET /notifications', () => {
 
   test('400 for a bad limit', async () => {
     const res = await invoke(
-      createList(() => makeDeps()),
+      listNotifications.createHandler(() => makeDeps()),
       httpEvent({ query: { limit: '500' } }),
     );
     expect(res.statusCode).toBe(400);
@@ -123,7 +123,7 @@ describe('GET /notifications/{id}', () => {
     const deps = makeDeps();
     deps.repo.get.mockResolvedValueOnce(stored());
     const res = await invoke(
-      createGet(() => deps),
+      getNotification.createHandler(() => deps),
       httpEvent({ path: '/notifications/{id}', pathParameters: { id: ID } }),
     );
     expect(res.statusCode).toBe(200);
@@ -132,7 +132,7 @@ describe('GET /notifications/{id}', () => {
 
   test('404 for an unknown id', async () => {
     const res = await invoke(
-      createGet(() => makeDeps()),
+      getNotification.createHandler(() => makeDeps()),
       httpEvent({ pathParameters: { id: ID } }),
     );
     expect(res.statusCode).toBe(404);
@@ -140,7 +140,7 @@ describe('GET /notifications/{id}', () => {
 
   test('400 for a non-UUID id', async () => {
     const res = await invoke(
-      createGet(() => makeDeps()),
+      getNotification.createHandler(() => makeDeps()),
       httpEvent({ pathParameters: { id: 'abc' } }),
     );
     expect(res.statusCode).toBe(400);

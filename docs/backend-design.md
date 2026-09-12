@@ -35,8 +35,9 @@ backend/
 ├── src/
 │   ├── deps.ts                     builds { repo, queue, provider, config, now, newId } once per container
 │   ├── handlers/
-│   │   ├── http/                   createNotification.ts · listNotifications.ts · getNotification.ts
-│   │   └── queue/                  processNotifications.ts
+│   │   ├── index.ts                one namespace export per Lambda; the runner and specs import from here
+│   │   ├── http/                   createNotification/ · listNotifications/ · getNotification/
+│   │   └── queue/                  processNotifications/   (each: handler.ts + index.ts entry point)
 │   ├── services/                   createNotification.ts · listNotifications.ts · getNotification.ts · processNotification.ts
 │   ├── domain/                     lifecycle.ts
 │   ├── repositories/               notificationRepository.ts · transitionUpdate.ts · item.ts · cursor.ts

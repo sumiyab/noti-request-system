@@ -1,7 +1,7 @@
 import { listNotificationsQuerySchema } from '@noti/shared';
-import { getDeps, type Deps } from '../../deps';
-import { httpHandler, parseWith } from '../../lib/http';
-import { listNotifications } from '../../services/listNotifications';
+import { getDeps, type Deps } from '../../../deps';
+import { httpHandler, parseWith } from '../../../lib/http';
+import { listNotifications } from '../../../services/listNotifications';
 
 export const createHandler = (deps: () => Deps) =>
   httpHandler(

@@ -36,7 +36,7 @@ build:
 
 functions:
   createNotification:
-    handler: src/handlers/http/createNotification.handler
+    handler: src/handlers/http/createNotification/index.handler
     events:
       - httpApi:
           method: POST
@@ -54,7 +54,7 @@ functions:
             Resource: !GetAtt NotificationRequestsQueue.Arn
 
   listNotifications:
-    handler: src/handlers/http/listNotifications.handler
+    handler: src/handlers/http/listNotifications/index.handler
     events:
       - httpApi:
           method: GET
@@ -69,7 +69,7 @@ functions:
               - !Join ['', [!GetAtt NotificationRequestsTable.Arn, '/index/byUser']]
 
   getNotification:
-    handler: src/handlers/http/getNotification.handler
+    handler: src/handlers/http/getNotification/index.handler
     events:
       - httpApi:
           method: GET
@@ -82,7 +82,7 @@ functions:
             Resource: !GetAtt NotificationRequestsTable.Arn
 
   processNotifications:
-    handler: src/handlers/queue/processNotifications.handler
+    handler: src/handlers/queue/processNotifications/index.handler
     events:
       - sqs:
           arn: !GetAtt NotificationRequestsQueue.Arn

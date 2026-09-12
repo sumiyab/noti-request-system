@@ -1,7 +1,7 @@
 import type { SQSBatchItemFailure, SQSHandler, SQSRecord } from 'aws-lambda';
-import { getDeps, type Deps } from '../../deps';
-import { queueMessageSchema } from '../../queue/message';
-import { processNotification, type ProcessOutcome } from '../../services/processNotification';
+import { getDeps, type Deps } from '../../../deps';
+import { queueMessageSchema } from '../../../queue/message';
+import { processNotification, type ProcessOutcome } from '../../../services/processNotification';
 
 /** Never throws: a thrown error would fail the whole batch. Anything unexpected → report this record only. */
 const processRecord = async (deps: Deps, record: SQSRecord): Promise<ProcessOutcome> => {

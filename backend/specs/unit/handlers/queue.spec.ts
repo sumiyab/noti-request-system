@@ -1,4 +1,4 @@
-import { createHandler } from '../../../src/handlers/queue/processNotifications';
+import { processNotifications } from '../../../src/handlers';
 import { ProviderError } from '../../../src/providers/notificationProvider';
 import { context, sqsEvent, sqsRecord } from '../../helpers/events';
 import { stored } from '../../helpers/fixtures';
@@ -28,7 +28,7 @@ describe('processNotifications handler', () => {
         : Promise.resolve({ providerMessageId: 'ok' }),
     );
 
-    const result = await createHandler(() => deps)(
+    const result = await processNotifications.createHandler(() => deps)(
       sqsEvent(...ids.map((id, i) => sqsRecord({ notificationId: id }, `msg-${i}`))),
       context,
       () => {},
@@ -44,7 +44,7 @@ describe('processNotifications handler', () => {
     const deps = makeDeps();
     claimAll(deps);
 
-    const result = await createHandler(() => deps)(
+    const result = await processNotifications.createHandler(() => deps)(
       sqsEvent(
         sqsRecord('not json', 'bad-1'),
         sqsRecord({ nope: true }, 'bad-2'),
@@ -64,7 +64,7 @@ describe('processNotifications handler', () => {
     claimAll(deps);
     deps.provider.send.mockRejectedValueOnce(new TypeError('bug'));
 
-    const result = await createHandler(() => deps)(
+    const result = await processNotifications.createHandler(() => deps)(
       sqsEvent(sqsRecord({ notificationId: ids[0] }, 'm')),
       context,
       () => {},

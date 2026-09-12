@@ -1,7 +1,5 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2, Context } from 'aws-lambda';
-import { handler as createNotification } from '../src/handlers/http/createNotification';
-import { handler as getNotification } from '../src/handlers/http/getNotification';
-import { handler as listNotifications } from '../src/handlers/http/listNotifications';
+import { createNotification, getNotification, listNotifications } from '../src/handlers';
 
 type Handler = (
   event: APIGatewayProxyEventV2,
@@ -9,13 +7,18 @@ type Handler = (
 ) => Promise<APIGatewayProxyStructuredResultV2 | undefined>;
 
 const routes: { method: string; pattern: RegExp; params: string[]; handler: Handler }[] = [
-  { method: 'POST', pattern: /^\/notifications$/, params: [], handler: createNotification as Handler },
-  { method: 'GET', pattern: /^\/notifications$/, params: [], handler: listNotifications as Handler },
+  {
+    method: 'POST',
+    pattern: /^\/notifications$/,
+    params: [],
+    handler: createNotification.handler as Handler,
+  },
+  { method: 'GET', pattern: /^\/notifications$/, params: [], handler: listNotifications.handler as Handler },
   {
     method: 'GET',
     pattern: /^\/notifications\/([^/]+)$/,
     params: ['id'],
-    handler: getNotification as Handler,
+    handler: getNotification.handler as Handler,
   },
 ];
 
