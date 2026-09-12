@@ -244,7 +244,7 @@ frameworkVersion: '4'
 provider:
   name: aws
   runtime: nodejs22.x
-  region: ${opt:region, 'ap-northeast-1'}
+  region: ${opt:region, 'ap-southeast-2'}
   stage: ${opt:stage, 'dev'}
   memorySize: 256
   timeout: 10
@@ -261,8 +261,9 @@ build:
     minify: false
     sourcemap: true
     target: node22
-    format: esm
+    format: cjs
     exclude: ['@aws-sdk/*']        # provided by the nodejs22.x runtime
+    # cjs, not esm: the runtime loads bundle.js as CommonJS unless a package.json with "type": "module" ships alongside
 
 functions:
   createNotification:
@@ -309,7 +310,7 @@ functions:
 
 Notes:
 
-- **Bundling.** Serverless v4 bundles with esbuild out of the box — one small ESM bundle per function, tree-shaken
+- **Bundling.** Serverless v4 bundles with esbuild out of the box — one small CommonJS bundle per function, tree-shaken
   to what that handler imports. `@aws-sdk/*` is excluded because the Node 22 runtime ships it; that keeps
   bundles under ~100 KB and cold starts short.
 - **Per-function IAM** is native in Serverless v4 (`iam.role.statements` under each function; the old

@@ -176,7 +176,7 @@ the code (`backend/src/domain/lifecycle.ts`):
 - **Node.js 22** — the Serverless CLI and Next.js run on Node, and it matches the Lambda `nodejs22.x` runtime
 - **Docker** — only for running locally
 - **For deployment:** AWS credentials, plus a free Serverless Framework account
-  (v4 requires `bunx serverless login` once)
+  (v4 requires `bunx serverless login` once). Default region is `ap-southeast-2`; override with `--region`.
 
 ### Install
 
@@ -223,7 +223,7 @@ through the standard `AWS_ENDPOINT_URL_DYNAMODB` / `AWS_ENDPOINT_URL_SQS` enviro
 ```bash
 cd backend
 bunx serverless login                   # once — Serverless Framework v4 requires an account (free for individuals)
-bunx serverless deploy --stage dev      # prints the HttpApiUrl output
+bunx serverless deploy --stage dev --param="frontendOrigin=http://localhost:3000"   # prints the endpoints
 ```
 
 Point the frontend at the deployed API:

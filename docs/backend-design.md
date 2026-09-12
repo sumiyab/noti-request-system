@@ -195,7 +195,7 @@ frameworkVersion: '4'
 provider:
   name: aws
   runtime: nodejs22.x
-  region: ${opt:region, 'ap-northeast-1'}
+  region: ${opt:region, 'ap-southeast-2'}
   stage: ${opt:stage, 'dev'}
   memorySize: 256
   timeout: 10
@@ -217,13 +217,12 @@ build:
     minify: false
     sourcemap: true
     target: node22
-    format: esm
+    format: cjs
     exclude: ['@aws-sdk/*']
 
 functions:   # see lambda-function-design.md — four functions with per-function IAM
 resources:   # see dynamodb-table-design.md and sqs-message-design.md — table, queue, DLQ
-  Outputs:
-    HttpApiUrl: { Value: !GetAtt HttpApi.ApiEndpoint }
+  Outputs:            # HttpApiUrl is emitted by the framework itself
     QueueUrl:   { Value: !Ref NotificationRequestsQueue }
     TableName:  { Value: !Ref NotificationRequestsTable }
 ```

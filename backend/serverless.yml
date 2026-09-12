@@ -6,7 +6,7 @@ frameworkVersion: '4'
 provider:
   name: aws
   runtime: nodejs22.x
-  region: ${opt:region, 'ap-northeast-1'}
+  region: ${opt:region, 'ap-southeast-2'}
   stage: ${opt:stage, 'dev'}
   memorySize: 256
   timeout: 10
@@ -21,7 +21,7 @@ provider:
         - ${param:frontendOrigin, 'http://localhost:3000'}
       allowedMethods: [GET, POST, OPTIONS]
       allowedHeaders: [Content-Type]
-      exposedHeaders: [Location, X-Request-Id]
+      exposedResponseHeaders: [Location, X-Request-Id]
       maxAge: 86400
 
 build:
@@ -30,7 +30,7 @@ build:
     minify: false
     sourcemap: true
     target: node22
-    format: esm
+    format: cjs
     exclude: ['@aws-sdk/*'] # provided by the nodejs22.x runtime
 
 functions:
@@ -139,8 +139,7 @@ resources:
           maxReceiveCount: 5
 
   Outputs:
-    HttpApiUrl:
-      Value: !GetAtt HttpApi.ApiEndpoint
+    # HttpApiUrl is emitted by the framework itself.
     TableName:
       Value: !Ref NotificationRequestsTable
     QueueUrl:
