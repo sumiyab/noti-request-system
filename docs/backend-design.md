@@ -205,7 +205,7 @@ provider:
     LOG_LEVEL: info
   httpApi:
     cors:
-      allowedOrigins: [${param:frontendOrigin, 'http://localhost:3000'}]
+      allowedOrigins: [http://localhost:3000, ${param:frontendOrigin, 'https://noti-request-system.vercel.app'}]
       allowedMethods: [GET, POST, OPTIONS]
       allowedHeaders: [Content-Type]
       exposedHeaders: [Location]
@@ -227,8 +227,8 @@ resources:   # see dynamodb-table-design.md and sqs-message-design.md — table,
     TableName:  { Value: !Ref NotificationRequestsTable }
 ```
 
-`${param:frontendOrigin}` is passed at deploy time (`serverless deploy --param="frontendOrigin=https://…"`)
-so the CORS origin is never hard-coded to a stage.
+`http://localhost:3000` is always allowed so a local `next dev` can talk to the deployed API; the second origin is the
+hosted frontend, overridable at deploy time (`serverless deploy --param="frontendOrigin=https://…"`).
 
 ## Environment
 

@@ -18,7 +18,8 @@ provider:
     # CORS lives here, once. API Gateway answers preflights and stamps every response, including errors.
     cors:
       allowedOrigins:
-        - ${param:frontendOrigin, 'http://localhost:3000'}
+        - http://localhost:3000
+        - ${param:frontendOrigin, 'https://noti-request-system.vercel.app'}
       allowedMethods: [GET, POST, OPTIONS]
       allowedHeaders: [Content-Type]
       exposedResponseHeaders: [Location, X-Request-Id]

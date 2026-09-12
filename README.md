@@ -223,7 +223,7 @@ through the standard `AWS_ENDPOINT_URL_DYNAMODB` / `AWS_ENDPOINT_URL_SQS` enviro
 ```bash
 cd backend
 bunx serverless login                   # once — Serverless Framework v4 requires an account (free for individuals)
-bunx serverless deploy --stage dev --param="frontendOrigin=http://localhost:3000"   # prints the endpoints
+bunx serverless deploy --stage dev            # prints the endpoints; --param="frontendOrigin=https://…" for a custom host
 ```
 
 Point the frontend at the deployed API:
@@ -233,8 +233,9 @@ echo "NEXT_PUBLIC_API_URL=https://<api-id>.execute-api.<region>.amazonaws.com" >
 bun run dev:frontend                    # or: cd frontend && bun run build → static site in frontend/out
 ```
 
-`frontend/out` can be hosted on any static host (S3 + CloudFront, Vercel, Netlify). Tear the backend down with
-`bunx serverless remove --stage dev`.
+`frontend/out` can be hosted on any static host (S3 + CloudFront, Vercel, Netlify). The dev stage allows
+`http://localhost:3000` and the deployed frontend (https://noti-request-system.vercel.app) as CORS origins. Tear the
+backend down with `bunx serverless remove --stage dev`.
 
 ### Useful scripts (repo root)
 
