@@ -4,8 +4,8 @@ A small full-stack **serverless** application for submitting notification reques
 an **asynchronous processing pipeline**.
 
 - **Frontend** — Next.js (App Router) + TypeScript, statically exported: submit an email request on behalf of
-  a user, get instant validation feedback, and watch its status change live. (The API accepts SMS and PUSH
-  too; the form keeps to one channel by choice.)
+  a user, get instant validation feedback, watch its status change live, and filter the list to one user. (The
+  API accepts SMS and PUSH too; the form keeps to one channel by choice.)
 - **Backend** — TypeScript on AWS Lambda (Node.js 22), deployed with Serverless Framework v4: API Gateway
   (HTTP API) → Lambda → DynamoDB, with SQS driving asynchronous processing.
 - **Tooling** — [Bun](https://bun.sh) workspaces for installs, scripts, tests, and the local runner;

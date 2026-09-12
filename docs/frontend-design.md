@@ -49,7 +49,8 @@ frontend/
     │   │   ├── RecipientField.tsx       label, hint and input type per channel
     │   │   └── MessageFields.tsx        subject (unmounted for SMS) + message with counter
     │   ├── notification-list/
-    │   │   ├── NotificationList.tsx     useNotifications(), empty/loading/error states
+    │   │   ├── NotificationList.tsx     useNotifications(filter), empty/loading/error states, owns the user filter
+    │   │   ├── UserFilter.tsx           search input + clear; validated with userIdSchema before it reaches the API
     │   │   ├── NotificationRow.tsx      one item; shows attempts and lastError when present
     │   │   ├── StatusBadge.tsx          shadcn Badge variant per status, role="status"
     │   │   └── LoadMoreButton.tsx       fetches the next cursor page
@@ -111,8 +112,9 @@ flowchart LR
 | `NotificationForm`                 | `useForm({ resolver: zodResolver(createNotificationSchema) })`, `handleSubmit → mutate`, server `details[]` → `setError`, `isSubmitting`/`isPending` on the button, `reset()` on success (keeping `userId`) | render the fields' markup (delegated), talk to `fetch` |
 | `UserIdField`                      | the sender's id; the demo's stand-in for a signed-in user — with an authorizer the field goes away and the token supplies it                                                                                | hold state                                             |
 | `RecipientField` / `MessageFields` | markup via shadcn `Field*`, per-channel labels/hints/limits, character counters from `useWatch()`                                                                                                           | hold state (they receive `control` / `register`)       |
-| `NotificationList`                 | loading / empty / error states, mapping pages to rows, the load-more button                                                                                                                                 | polling logic (in the hook)                            |
-| `NotificationRow`                  | one item's layout: channel icon, recipient, sender (`userId`), subject/message preview, `StatusBadge`, attempts, `lastError`, relative time                                                                 | fetching                                               |
+| `NotificationList`                 | loading / empty / error states, mapping pages to rows, the load-more button, the user filter (debounced 300 ms, validated with `userIdSchema`, passed to `useNotifications`)                                | polling logic (in the hook)                            |
+| `UserFilter`                       | the search input, its clear button, and the inline validation message                                                                                                                                       | state (controlled by the list)                         |
+| `NotificationRow`                  | one item's layout: channel icon, recipient, sender (`userId`, click to filter), subject/message preview, `StatusBadge`, attempts, `lastError`, relative time                                                | fetching                                               |
 | `StatusBadge`                      | colour + text per status; `role="status"` so screen readers announce changes                                                                                                                                | anything else                                          |
 | shadcn `Field*`                    | label, control slot, description, `FieldError` (`role="alert"`) — generated once, reused by every field; inputs get `aria-invalid` from RHF's `errors`                                                      | validation                                             |
 

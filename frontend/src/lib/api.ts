@@ -58,12 +58,16 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   return body as T;
 };
 
+/** `userId` narrows the list to one user's requests (server-side, via the `byUser` index). */
+export type ListParams = { cursor?: string | undefined; userId?: string | undefined; limit?: number };
+
 export const api = {
   create: (input: CreateNotificationInput) =>
     request<{ data: Notification }>('/notifications', { method: 'POST', body: JSON.stringify(input) }),
 
-  list: (cursor?: string, limit = 20) => {
+  list: ({ cursor, userId, limit = 20 }: ListParams = {}) => {
     const params = new URLSearchParams({ limit: String(limit) });
+    if (userId) params.set('userId', userId);
     if (cursor) params.set('cursor', cursor);
     return request<ListNotificationsResponse>(`/notifications?${params.toString()}`);
   },

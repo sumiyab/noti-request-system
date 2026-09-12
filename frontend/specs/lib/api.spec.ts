@@ -28,10 +28,14 @@ describe('api client', () => {
     });
   });
 
-  test('list builds the query string with limit and cursor', async () => {
+  test('list builds the query string with limit, userId and cursor', async () => {
     mockResponse(200, { data: [], nextCursor: null });
-    await api.list('abc', 10);
-    expect(lastRequest().url).toBe('http://localhost:3001/notifications?limit=10&cursor=abc');
+    await api.list({ cursor: 'abc', limit: 10, userId: 'user-42' });
+    expect(lastRequest().url).toBe('http://localhost:3001/notifications?limit=10&userId=user-42&cursor=abc');
+
+    mockResponse(200, { data: [], nextCursor: null });
+    await api.list();
+    expect(lastRequest().url).toBe('http://localhost:3001/notifications?limit=20');
   });
 
   test('an error envelope becomes an ApiError with code and details', async () => {

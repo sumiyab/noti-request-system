@@ -13,11 +13,14 @@ type Pages = { pages: ListNotificationsResponse[] };
 const hasInFlight = (data: Pages | undefined) =>
   data?.pages.some((page) => page.data.some((n) => !isTerminal(n.status))) ?? false;
 
-/** Newest-first list with cursor pagination; polls every 2 s while any loaded request is still in flight. */
-export const useNotifications = () =>
+/**
+ * Newest-first list with cursor pagination; polls every 2 s while any loaded request is still in flight.
+ * Pass a `userId` to show one user's requests only.
+ */
+export const useNotifications = (filter: { userId?: string } = {}) =>
   useInfiniteQuery({
-    queryKey: queryKeys.notifications.list(),
-    queryFn: ({ pageParam }) => api.list(pageParam),
+    queryKey: queryKeys.notifications.list(filter),
+    queryFn: ({ pageParam }) => api.list({ cursor: pageParam, ...filter }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     refetchInterval: (query) => (hasInFlight(query.state.data) ? POLL_INTERVAL_MS : false),
