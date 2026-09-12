@@ -50,51 +50,11 @@ How a request flows through the system:
 
 The same flow over time, including the failure branches:
 
-```mermaid
-sequenceDiagram
-  autonumber
-  actor U as User
-  participant FE as Next.js app
-  participant API as API Gateway + Lambda
-  participant DB as DynamoDB
-  participant Q as SQS
-  participant W as Worker Lambda
-  participant P as Provider
+<!-- Source: docs/request-sequence.mmd. Regenerate with:
+     cd docs && bunx --bun @mermaid-js/mermaid-cli -i request-sequence.mmd -o request-sequence.svg -p puppeteer.json -c mermaid.config.json -b white
+     (and -o request-sequence.png -s 2 for the PNG) -->
 
-  U->>FE: Fill in the form and submit
-  FE->>FE: Validate with the shared zod schema
-  FE->>API: POST /notifications
-  API->>API: Validate again (authoritative)
-  API->>DB: PutItem with status PENDING
-  API->>Q: SendMessage (notificationId)
-  alt SQS accepted the message
-    API->>DB: UpdateItem PENDING → QUEUED
-    API-->>FE: 202 Accepted + Location header
-    FE-->>U: Success toast, request appears in the list
-  else SQS send failed
-    API->>DB: UpdateItem PENDING → FAILED
-    API-->>FE: 503 ENQUEUE_FAILED
-    FE-->>U: Error toast, safe to resubmit
-  end
-
-  Q->>W: Batch of up to 10 messages
-  W->>DB: Claim (status → PROCESSING, attempts + 1)
-  W->>P: send(notification) with the id as idempotency key
-  alt Provider accepted
-    W->>DB: status → SENT
-  else Permanent error, or the 3rd attempt failed
-    W->>DB: status → FAILED with lastError
-  else Transient error with attempts left
-    W->>DB: status → QUEUED with lastError
-    W-->>Q: Report batch item failure (redelivered after 60 s)
-  end
-
-  loop Meanwhile, every 2 s while a request is in flight
-    FE->>API: GET /notifications
-    API->>DB: Query the byCreatedAt index
-    API-->>FE: 200 with data and nextCursor
-  end
-```
+![Request sequence: browser → API Gateway → createNotification → DynamoDB + SQS, then the SQS-triggered worker claims the item, calls the provider, and records SENT / QUEUED-for-retry / FAILED while the browser polls](docs/request-sequence.svg)
 
 ## Notification lifecycle
 

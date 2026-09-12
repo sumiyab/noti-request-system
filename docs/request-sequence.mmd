@@ -1,0 +1,46 @@
+sequenceDiagram
+  autonumber
+  actor U as User
+  participant B as Browser<br/>Next.js (Vercel)
+  participant G as API Gateway<br/>HTTP API
+  participant C as Lambda<br/>createNotification
+  participant D as DynamoDB<br/>notification-requests
+  participant Q as SQS<br/>notification-requests
+  participant W as Lambda<br/>processNotifications
+  participant P as Provider<br/>(simulated)
+
+  U->>B: Fill in user, recipient, subject, message
+  B->>B: Validate with the shared zod schema
+  B->>G: POST /notifications
+  G->>C: Invoke (sync)
+  C->>C: Validate again (authoritative)
+  C->>D: PutItem status=PENDING<br/>(cond: id does not exist)
+  C->>Q: SendMessage { notificationId }
+  alt SQS accepted
+    C->>D: UpdateItem PENDING → QUEUED
+    C-->>B: 202 Accepted + Location
+  else SQS send failed
+    C->>D: UpdateItem PENDING → FAILED
+    C-->>B: 503 ENQUEUE_FAILED
+  end
+
+  Note over Q,W: Event source mapping polls the queue, batches of ≤ 10
+  Q->>W: Invoke with SQS records
+  W->>D: UpdateItem → PROCESSING, attempts + 1<br/>(cond: status allows claim, attempts < 3)
+  W->>P: send(notification)
+  alt Provider accepted
+    W->>D: UpdateItem → SENT, providerMessageId, completedAt
+    W-->>Q: Message deleted
+  else Transient error, attempts left
+    W->>D: UpdateItem → QUEUED, lastError
+    W-->>Q: Batch item failure → redelivered after 60 s
+  else Permanent error, or 3rd failure
+    W->>D: UpdateItem → FAILED, lastError, completedAt
+    W-->>Q: Message deleted
+  end
+
+  loop Every 2 s while any request is in flight
+    B->>G: GET /notifications (?userId=)
+    G->>D: Query byCreatedAt / byUser index
+    G-->>B: 200 { data, nextCursor }
+  end
