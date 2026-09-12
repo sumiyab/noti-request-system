@@ -16,12 +16,17 @@ through an **asynchronous processing pipeline**.
 > the request lifecycle — validation, persistence, queueing, retries, status tracking — not a vendor
 > integration. Swapping in SES / SNS is a single-class change (see [Future improvements](#future-improvements)).
 
+**Live:** frontend at <https://noti-request-system.vercel.app> · API at
+`https://jvw8398zx2.execute-api.ap-southeast-2.amazonaws.com` (dev stage, Sydney). See
+[Live deployment](#live-deployment) for what is running where.
+
 ## Contents
 
 - [Architecture](#architecture)
 - [Notification lifecycle](#notification-lifecycle)
 - [Project structure](#project-structure)
 - [Getting started](#getting-started)
+- [Live deployment](#live-deployment)
 - [API reference](#api-reference)
 - [Design decisions](#design-decisions)
 - [Testing strategy](#testing-strategy)
@@ -197,6 +202,21 @@ bun run dev:frontend                    # or: cd frontend && bun run build → s
 `http://localhost:3000` and the deployed frontend (https://noti-request-system.vercel.app) as CORS origins. Tear the
 backend down with `bunx serverless remove --stage dev`.
 
+### Deploy the frontend to Vercel
+
+The repo is a Bun workspace, so the Vercel project is linked at the **repo root** with
+**Root Directory = `frontend`**; that way `@noti/shared` (a `workspace:*` link) resolves during the build.
+
+```bash
+vercel link                                                   # once, at the repo root → creates .vercel/ (gitignored)
+vercel env add NEXT_PUBLIC_API_URL production                  # paste the HttpApiUrl from `serverless deploy`
+vercel deploy --prod                                           # builds `next build` (static export) and promotes it
+```
+
+Vercel detects Next.js and Bun from `bun.lock`. `NEXT_PUBLIC_API_URL` is inlined at build time
+(`next.config.ts`), so changing it needs a redeploy. If the frontend moves to another host, redeploy the backend
+with `--param="frontendOrigin=https://<new-host>"` so API Gateway's CORS allow-list follows it.
+
 ### Useful scripts (repo root)
 
 | Command                    | What it does                                                 |
@@ -218,6 +238,23 @@ The simulated provider makes every branch of the lifecycle easy to trigger:
 - A recipient containing **`fail`** (e.g. `fail@example.com`) → permanent error → `FAILED` after one attempt.
 - `SIMULATED_FAILURE_RATE` (default `0.2`) → random transient errors → the request goes back to `QUEUED`,
   `attempts` increases, SQS redelivers it; after 3 attempts it becomes `FAILED`.
+
+## Live deployment
+
+What is currently running, and where:
+
+| Layer    | Where                                                                                                                 | Notes                                                                                                                                                                                     |
+| -------- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frontend | Vercel project `noti-request-system` → <https://noti-request-system.vercel.app>                                       | Static export of `frontend/`; `NEXT_PUBLIC_API_URL` set in the Production environment. Redeployed with `vercel deploy --prod` from the repo root.                                         |
+| API      | API Gateway HTTP API `jvw8398zx2` in `ap-southeast-2` → `https://jvw8398zx2.execute-api.ap-southeast-2.amazonaws.com` | CORS allow-list: `http://localhost:3000` and the Vercel origin. No authorizer — see [Trade-offs](#trade-offs-and-known-limitations).                                                      |
+| Compute  | 4 Lambdas (`createNotification`, `listNotifications`, `getNotification`, `processNotifications`), Node.js 22          | CloudFormation stack `noti-request-system-dev`, deployed with `serverless deploy --stage dev`. One IAM role per function, scoped to the table/indexes/queue it touches.                   |
+| Data     | DynamoDB `notification-requests-dev` with GSIs `byCreatedAt` and `byUser`                                             | PAY_PER_REQUEST, point-in-time recovery on. Items written before `userId` existed are skipped by the list endpoint with a warning (see `repositories/notificationRepository.ts`).         |
+| Queue    | SQS `notification-requests-dev` + `notification-requests-dlq-dev`                                                     | Event source mapping → `processNotifications`, batch ≤ 10, `ReportBatchItemFailures`; 60 s visibility timeout; DLQ after 5 receives. `SIMULATED_FAILURE_RATE=0.2` so retries are visible. |
+| Logs     | CloudWatch `/aws/lambda/noti-request-system-dev-*`, 14-day retention                                                  | Structured JSON lines with `requestId` / `notificationId`; `aws logs tail <group> --follow` to watch a request go through.                                                                |
+
+The [request sequence](#request-sequence) diagram above is this exact deployment. Nothing in the frontend bundle or
+the Lambda code is environment-specific: the same handlers run against DynamoDB Local + ElasticMQ in
+[Run locally](#run-locally-no-aws-account-needed) and against AWS here.
 
 ## API reference
 
