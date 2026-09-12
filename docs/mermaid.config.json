@@ -1,0 +1,8 @@
+{
+  "theme": "neutral",
+  "themeVariables": {
+    "fontFamily": "Inter, -apple-system, Helvetica, Arial, sans-serif",
+    "fontSize": "14px"
+  },
+  "flowchart": { "curve": "basis", "nodeSpacing": 40, "rankSpacing": 60, "padding": 12 }
+}

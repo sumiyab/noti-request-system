@@ -1,0 +1,16 @@
+# Local emulators for the backend. Nothing here is used in AWS.
+#   docker compose up -d
+services:
+  dynamodb:
+    image: amazon/dynamodb-local:latest
+    command: ['-jar', 'DynamoDBLocal.jar', '-sharedDb', '-inMemory']
+    ports:
+      - '8000:8000'
+
+  elasticmq:
+    image: softwaremill/elasticmq-native:latest
+    ports:
+      - '9324:9324' # SQS-compatible API
+      - '9325:9325' # web UI
+    volumes:
+      - ./backend/local/elasticmq.conf:/opt/elasticmq.conf:ro

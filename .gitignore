@@ -1,0 +1,19 @@
+# dependencies
+node_modules/
+
+# build output
+.next/
+out/
+.serverless/
+dist/
+coverage/
+
+# environment
+.env
+.env.local
+.env.*.local
+
+# tooling
+.omc/
+*.tsbuildinfo
+.DS_Store

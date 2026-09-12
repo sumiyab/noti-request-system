@@ -1,0 +1,38 @@
+{
+  "name": "noti-request-system",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Serverless notification request system — Next.js frontend, Lambda/DynamoDB/SQS backend",
+  "workspaces": [
+    "shared",
+    "backend",
+    "frontend"
+  ],
+  "packageManager": "bun@1.3.12",
+  "engines": {
+    "node": ">=22",
+    "bun": ">=1.3"
+  },
+  "scripts": {
+    "dev:backend": "bun run --filter @noti/backend dev",
+    "dev:frontend": "bun run --filter @noti/frontend dev",
+    "test": "bun run --filter '*' test",
+    "test:integration": "bun run --filter @noti/backend test:integration",
+    "typecheck": "bun run --filter '*' typecheck",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.10.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prefer-arrow-functions": "^3.10.2",
+    "eslint-plugin-unused-imports": "^4.4.1",
+    "prettier": "^3.9.6",
+    "prettier-plugin-tailwindcss": "^0.8.1",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.70.0"
+  }
+}

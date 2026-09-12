@@ -1,0 +1,10 @@
+{
+  "name": "@noti/shared",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"@noti/shared: no tests yet\"",
+    "typecheck": "echo \"@noti/shared: no sources yet\""
+  }
+}

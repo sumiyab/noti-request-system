@@ -1,0 +1,33 @@
+flowchart LR
+  UI["Next.js app<br/>(static export)"]
+
+  subgraph api["Synchronous API"]
+    direction LR
+    APIGW["API Gateway<br/>HTTP API"]
+    C["λ createNotification"]
+    L["λ listNotifications"]
+    G["λ getNotification"]
+  end
+
+  subgraph async["Asynchronous processing"]
+    direction LR
+    Q[["SQS<br/>notification-requests"]]
+    P["λ processNotifications"]
+    PR["Simulated provider"]
+    DLQ[["SQS<br/>dead-letter queue"]]
+  end
+
+  DB[("DynamoDB<br/>notification-requests")]
+
+  UI -->|HTTPS / JSON| APIGW
+  APIGW --> C
+  APIGW --> L
+  APIGW --> G
+  C -->|"PutItem (PENDING)<br/>UpdateItem (QUEUED)"| DB
+  L -->|"Query (GSI)"| DB
+  G -->|GetItem| DB
+  C -->|SendMessage| Q
+  Q -->|"batches of ≤ 10"| P
+  P -->|"conditional UpdateItem"| DB
+  P -->|send| PR
+  Q -. "after 5 failed receives" .-> DLQ

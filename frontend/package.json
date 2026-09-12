@@ -1,0 +1,10 @@
+{
+  "name": "@noti/frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"@noti/frontend: no tests yet\"",
+    "typecheck": "echo \"@noti/frontend: no sources yet\""
+  }
+}

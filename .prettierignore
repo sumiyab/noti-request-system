@@ -1,0 +1,9 @@
+node_modules
+.next
+out
+.serverless
+coverage
+bun.lock
+.omc
+docs/*.svg
+docs/*.png
