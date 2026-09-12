@@ -79,6 +79,8 @@ How a request flows through the system:
    each message the worker _claims_ the request (`PROCESSING`), calls the provider, and records the outcome:
    `SENT`, `FAILED`, or back to `QUEUED` for a retry.
 4. The frontend polls `GET /notifications` while any request is still in flight, so statuses update live.
+   Typing a user id in the list's filter (or clicking a row's sender) switches the poll to
+   `GET /notifications?userId=…`, which the `byUser` index answers with only that user's requests.
 
 ### Request sequence
 
@@ -621,6 +623,12 @@ that signed-in identity, which is why it survives a successful submit while the 
 - **Typed API client** (`lib/api.ts`) that turns the error envelope into an `ApiError` — Components deal with
   one error type; validation `details` are mapped back onto form fields. _Instead of:_ Raw `fetch` in
   components.
+- **Server-side user filter, validated client-side** — The list's "Filter by user ID" field is debounced (300
+  ms) and checked with the shared `userIdSchema` before anything is sent, so an invalid id shows the API's own
+  message inline and never costs a request; a valid one becomes `?userId=` and a separate query-key entry, so
+  switching users never shows another user's cached page and polling keeps working per filter. A row's sender
+  is clickable for the same reason people filter: "show me the rest of this user's history". _Instead of:_
+  Filtering the loaded pages in the browser: only sees what is already fetched, and breaks the cursor.
 - **react-hook-form + zod resolver** (full design:
   [docs/frontend-design.md](docs/frontend-design.md#form--react-hook-form--zod)) — The shared schema is the
   resolver, so the form validates with exactly the API's rules; server-side `details[]` map onto fields with
@@ -679,8 +687,10 @@ flowchart TB
   processed → `SENT`/`FAILED`, pagination across pages, conditional-update conflicts, and that only failed
   batch items are redelivered. _(`bun run test:integration` (Jest, `--runInBand`) after `docker compose up`.)_
 - **`frontend/specs`** — Form validation and error mapping, success/error toasts, list rendering and status
-  badges, polling start/stop, the API client's error handling — with the API mocked at the `fetch` boundary.
-  _(Jest + Testing Library (`jsdom`), real `QueryClient` per test.)_
+  badges, polling start/stop, the user filter (typed and via a row, cleared, invalid input blocked
+  client-side, filtered empty state), the create hook prepending into exactly the lists that should show the
+  new item, the API client's error handling — with the API mocked at the `fetch` boundary. _(Jest + Testing
+  Library (`jsdom`), real `QueryClient` per test.)_
 - **Manual end-to-end** — Submit from the browser, watch the status change, trigger both failure branches with
   a `fail@…` recipient and `SIMULATED_FAILURE_RATE`. _(`bun run dev:backend` + `bun run dev:frontend`.)_
 
