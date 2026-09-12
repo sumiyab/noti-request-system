@@ -22,24 +22,18 @@ describe('NotificationForm', () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  test('switching to SMS removes the subject field and omits it from the request', async () => {
+  test('submits an EMAIL request with the entered fields', async () => {
     const user = userEvent.setup();
-    mockResponse(202, {
-      data: notification({ channel: 'SMS', recipient: '+97699112233', subject: undefined }),
-    });
+    mockResponse(202, { data: notification() });
     mockList([]);
     renderWithQuery(<NotificationForm />);
 
-    expect(screen.getByLabelText('Subject')).toBeInTheDocument();
-    await user.click(screen.getByRole('radio', { name: 'SMS' }));
-    expect(screen.queryByLabelText('Subject')).not.toBeInTheDocument();
-
-    await fill(user, { 'Phone number': '+97699112233', Message: 'Hello' });
+    await fill(user, { 'Email address': 'jane@example.com', Subject: 'Welcome!', Message: 'Hello' });
     await user.click(screen.getByRole('button', { name: 'Send notification' }));
 
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
     const body = JSON.parse(lastRequest().init?.body as string) as Record<string, unknown>;
-    expect(body).toEqual({ channel: 'SMS', recipient: '+97699112233', message: 'Hello' });
+    expect(body).toEqual({ channel: 'EMAIL', recipient: 'jane@example.com', subject: 'Welcome!', message: 'Hello' });
   });
 
   test('maps a server VALIDATION_ERROR onto the right field', async () => {

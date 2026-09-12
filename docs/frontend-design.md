@@ -15,7 +15,7 @@ Library** test it.
 | Form                      | react-hook-form 7 + `@hookform/resolvers/zod`                       | The shared zod schema is the resolver, so the form validates with exactly the API's rules; RHF handles registration, dirty/pending state, and per-field errors (including ones set from the server). |
 | Validation                | zod 4 (`@noti/shared`)                                              | One schema for form, API, and types.                                                                                                                                                                 |
 | Styling                   | Tailwind CSS 4                                                      | Utility classes, CSS-first config (`@import "tailwindcss"` + `@theme` in `globals.css`), no `tailwind.config`.                                                                                       |
-| Components                | shadcn/ui                                                           | Copied into `src/components/ui/`, not a dependency: Button, Input, Textarea, Label, RadioGroup, Field, Badge, Card, Sonner. Accessible (Radix) and ours to edit.                                     |
+| Components                | shadcn/ui                                                           | Copied into `src/components/ui/`, not a dependency: Button, Input, Textarea, Label, Field, Badge, Card, Sonner. Accessible (Radix) and ours to edit.                                                 |
 | Toasts                    | shadcn `Sonner`                                                     | Already part of the kit.                                                                                                                                                                             |
 | Package manager / scripts | Bun                                                                 | `bun install`, `bun run …`. Bun respects the `#!/usr/bin/env node` shebang of `jest` and `next`, so both run on Node exactly as in CI.                                                               |
 | Lint                      | ESLint 9 (flat config) + `typescript-eslint` + `eslint-config-next` | Rules below. ESLint 9, not 10: `eslint-config-next`'s plugins (`eslint-plugin-react`) still use APIs removed in 10.                                                                                  |
@@ -44,8 +44,7 @@ frontend/
     │   └── globals.css         @import "tailwindcss"; shadcn theme tokens; status colour tokens
     ├── components/
     │   ├── notification-form/
-    │   │   ├── NotificationForm.tsx     useForm + zodResolver, submit, server errors → setError
-    │   │   ├── ChannelField.tsx         RadioGroup EMAIL / SMS / PUSH
+    │   │   ├── NotificationForm.tsx     useForm + zodResolver, submit, server errors → setError (channel fixed to EMAIL)
     │   │   ├── RecipientField.tsx       label, hint and input type per channel
     │   │   └── MessageFields.tsx        subject (unmounted for SMS) + message with counter
     │   ├── notification-list/
@@ -70,7 +69,7 @@ frontend/
 ```
 
 Files are small on purpose — the lint rule caps every file at 160 lines, so a component that grows splits
-along the seams shown above (the form into channel/recipient/message pieces, the list into row/badge/pager).
+along the seams shown above (the form into recipient/message pieces, the list into row/badge/pager).
 
 ### Shared schemas
 
@@ -104,14 +103,14 @@ flowchart LR
 
 ## Components — responsibilities
 
-| Component                                           | Owns                                                                                                                                                                                     | Does not                                               |
-| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `NotificationForm`                                  | `useForm({ resolver: zodResolver(createNotificationSchema) })`, `handleSubmit → mutate`, server `details[]` → `setError`, `isSubmitting`/`isPending` on the button, `reset()` on success | render the fields' markup (delegated), talk to `fetch` |
-| `ChannelField` / `RecipientField` / `MessageFields` | markup via shadcn `Field*`, per-channel labels/hints/limits, character counters from `useWatch()`                                                                                        | hold state (they receive `control` / `register`)       |
-| `NotificationList`                                  | loading / empty / error states, mapping pages to rows, the load-more button                                                                                                              | polling logic (in the hook)                            |
-| `NotificationRow`                                   | one item's layout: channel icon, recipient, subject/message preview, `StatusBadge`, attempts, `lastError`, relative time                                                                 | fetching                                               |
-| `StatusBadge`                                       | colour + text per status; `role="status"` so screen readers announce changes                                                                                                             | anything else                                          |
-| shadcn `Field*`                                     | label, control slot, description, `FieldError` (`role="alert"`) — generated once, reused by every field; inputs get `aria-invalid` from RHF's `errors`                                   | validation                                             |
+| Component                          | Owns                                                                                                                                                                                     | Does not                                               |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `NotificationForm`                 | `useForm({ resolver: zodResolver(createNotificationSchema) })`, `handleSubmit → mutate`, server `details[]` → `setError`, `isSubmitting`/`isPending` on the button, `reset()` on success | render the fields' markup (delegated), talk to `fetch` |
+| `RecipientField` / `MessageFields` | markup via shadcn `Field*`, per-channel labels/hints/limits, character counters from `useWatch()`                                                                                        | hold state (they receive `control` / `register`)       |
+| `NotificationList`                 | loading / empty / error states, mapping pages to rows, the load-more button                                                                                                              | polling logic (in the hook)                            |
+| `NotificationRow`                  | one item's layout: channel icon, recipient, subject/message preview, `StatusBadge`, attempts, `lastError`, relative time                                                                 | fetching                                               |
+| `StatusBadge`                      | colour + text per status; `role="status"` so screen readers announce changes                                                                                                             | anything else                                          |
+| shadcn `Field*`                    | label, control slot, description, `FieldError` (`role="alert"`) — generated once, reused by every field; inputs get `aria-invalid` from RHF's `errors`                                   | validation                                             |
 
 Accessibility baseline: every input has a label, errors are linked via `aria-describedby`, the status badge is
 a live region, and the submit button is disabled (not hidden) while pending.

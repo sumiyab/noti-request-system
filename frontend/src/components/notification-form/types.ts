@@ -2,8 +2,9 @@ import type { Control, FieldErrors, UseFormRegister } from 'react-hook-form';
 import type { Channel } from '@/schemas';
 
 /**
- * Flat shape the form edits. The API type is a discriminated union (SMS has no subject);
- * the resolver validates against that union, and `shouldUnregister` drops `subject` when it is unmounted.
+ * Flat shape the form edits. The API type is a discriminated union (SMS has no subject); the resolver
+ * validates against that union. The field components are channel-aware so the form can offer other
+ * channels later without changes below this file.
  */
 export type NotificationFormValues = {
   channel: Channel;
