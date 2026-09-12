@@ -16,12 +16,39 @@ through an **asynchronous processing pipeline**.
 > the request lifecycle — validation, persistence, queueing, retries, status tracking — not a vendor
 > integration. Swapping in SES / SNS is a single-class change (see [Future improvements](#future-improvements)).
 
-**Live:** frontend at <https://noti-request-system.vercel.app> · API at
-`https://jvw8398zx2.execute-api.ap-southeast-2.amazonaws.com` (dev stage, Sydney). See
-[Live deployment](#live-deployment) for what is running where.
+## Quick start
+
+| Deployment                                                              | Where it runs                                                                            |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| **App** — <https://noti-request-system.vercel.app>                      | Vercel (static Next.js export)                                                           |
+| **API** — `https://jvw8398zx2.execute-api.ap-southeast-2.amazonaws.com` | AWS `ap-southeast-2`, stack `noti-request-system-dev` — try `GET /notifications?limit=5` |
+| **Source** — <https://github.com/sumiyab/noti-request-system>           | `main` is what is deployed; details in [Live deployment](#live-deployment)               |
+
+**Run it locally** (Bun 1.3+, Node 22, Docker):
+
+```bash
+bun install
+cp backend/.env.example backend/.env.local && cp frontend/.env.example frontend/.env.local
+docker compose up -d       # DynamoDB Local + ElasticMQ
+bun run dev:backend        # API + worker on http://localhost:3001
+bun run dev:frontend       # app on http://localhost:3000
+```
+
+**Check it:** `bun run test` (unit, every workspace) · `bun run test:integration` (against the emulators) ·
+`bun run typecheck` · `bun run lint`.
+
+**Deploy it:**
+
+```bash
+cd backend && bunx serverless deploy --stage dev   # AWS: API Gateway + 4 Lambdas + DynamoDB + SQS
+vercel deploy --prod                               # Vercel: from the repo root, Root Directory = frontend
+```
+
+Step-by-step versions with prerequisites, ports and environment variables: [Getting started](#getting-started).
 
 ## Contents
 
+- [Quick start](#quick-start)
 - [Architecture](#architecture)
 - [Notification lifecycle](#notification-lifecycle)
 - [Project structure](#project-structure)
