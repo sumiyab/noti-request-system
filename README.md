@@ -220,6 +220,9 @@ bunx serverless login                   # once — Serverless Framework v4 requi
 bunx serverless deploy --stage dev            # prints the endpoints; --param="frontendOrigin=https://…" for a custom host
 ```
 
+Optional: `--param="alarmEmail=you@example.com"` subscribes an address to the alarm topic (SNS sends a
+confirmation link). Without it the three alarms still evaluate and show in the CloudWatch console.
+
 Point the frontend at the deployed API:
 
 ```bash
@@ -478,10 +481,19 @@ Requests move through the pipeline in seconds, so WebSockets would be a second A
 local runner; Lambda stays on `nodejs22.x` as the brief requires, and `jest`, `tsc` and `serverless` all
 execute on Node, so nothing Bun-specific ships.
 
-**What I deliberately left out** — authentication, rate limiting, exponential backoff, a transactional outbox
-for the millisecond `PENDING` window, real providers, WebSockets, CI. Each is listed under
-[Future improvements](#future-improvements) with the shape it would take; none is needed to demonstrate a
-correct, maintainable pipeline, and adding them would have been the over-engineering the brief warned against.
+**Operable from day one.** A notification system fails quietly — a message lands in the DLQ and nobody knows.
+So the stack ships with the minimum that makes failure visible and bounded, declared next to the queue and
+table so no stage can exist without it: three CloudWatch alarms (DLQ not empty, worker errors, API 5xx) on an
+SNS topic, X-Ray on every function, a throttle on the open API, a concurrency cap on the worker so a burst
+waits in SQS instead of tripping the provider, and KMS on the table so every read of a message body is in
+CloudTrail. Each is a few lines of CloudFormation; none changes application code.
+
+**What I deliberately left out** — authentication (and with it the per-user access check), an idempotency key
+on `POST`, transition history, a retention policy, exponential backoff, a transactional outbox for the
+millisecond `PENDING` window, real providers, WebSockets, CI. Each is listed under
+[Trade-offs](#trade-offs-and-known-limitations) or [Future improvements](#future-improvements) with the shape
+it would take; none is needed to demonstrate a correct, maintainable pipeline, and adding them would have been
+the over-engineering the brief warned against.
 
 ### The full list
 
@@ -532,6 +544,23 @@ noted so the reasoning can be checked.
 - **Dead-letter queue after 5 receives** — Catches "poison" messages that crash the worker before it can
   record a status — a separate safety net from the business-level retry limit. _Instead of:_ No DLQ: a
   crashing message would circle forever.
+- **Alarms in the stack** (DLQ not empty, worker `Errors`, API `5xx` → one SNS topic) — The three signals that
+  mean "a human has to look", declared in `serverless.yml` so every stage has them; an email is subscribed
+  with `--param="alarmEmail=…"`. Business failures (`FAILED` items) are deliberately not alarmed — they are
+  expected and recorded on the item. _Instead of:_ Alarms created by hand in the console: they drift, and a
+  fresh stage has none.
+- **X-Ray on every function** — One trace follows a request from the API Lambda through SQS into the worker,
+  which is how a single stuck request gets debugged. _Instead of:_ Correlating by `requestId` across three log
+  groups by hand.
+- **Throttle on the HTTP API stage** (10 req/s, burst 20) — The API has no authorizer, so this is the only
+  bound on what one loop can cost in Lambda invocations and provider sends. _Instead of:_ WAF rate rules:
+  finer, but a second service for a demo; per-client limits need an authorizer first.
+- **Reserved concurrency 5 on the worker** — At most 50 in-flight provider sends; a burst waits in SQS rather
+  than hitting SES/SNS rate limits and burning attempts on transient errors. _Instead of:_ Default scaling to
+  1,000: fine for the simulator, a self-inflicted outage against a real provider.
+- **KMS encryption on the table** — Message bodies are PII; with a KMS key every decrypt is a CloudTrail
+  event. AWS-managed key for now; a customer-managed key is one more property once the business owns key
+  policy. _Instead of:_ The default AWS-owned key: encrypted, but no audit trail per access.
 - **`byCreatedAt` GSI for listing** (full design:
   [docs/dynamodb-table-design.md](docs/dynamodb-table-design.md)) — The list endpoint queries the index with a
   constant partition key sorted by `createdAt`, giving "newest first" without a table scan. Pagination uses
