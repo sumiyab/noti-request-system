@@ -37,7 +37,9 @@ functions:
   createNotification:
     handler: src/handlers/http/createNotification.handler
     events:
-      - httpApi: { method: POST, path: /notifications }
+      - httpApi:
+          method: POST
+          path: /notifications
     environment:
       QUEUE_URL: !Ref NotificationRequestsQueue
     iam:
@@ -53,18 +55,22 @@ functions:
   listNotifications:
     handler: src/handlers/http/listNotifications.handler
     events:
-      - httpApi: { method: GET, path: /notifications }
+      - httpApi:
+          method: GET
+          path: /notifications
     iam:
       role:
         statements:
           - Effect: Allow
             Action: [dynamodb:Query]
-            Resource: !Sub '${NotificationRequestsTable.Arn}/index/byCreatedAt'
+            Resource: !Join ['', [!GetAtt NotificationRequestsTable.Arn, '/index/byCreatedAt']]
 
   getNotification:
     handler: src/handlers/http/getNotification.handler
     events:
-      - httpApi: { method: GET, path: /notifications/{id} }
+      - httpApi:
+          method: GET
+          path: /notifications/{id}
     iam:
       role:
         statements:
