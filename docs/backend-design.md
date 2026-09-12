@@ -29,8 +29,8 @@ backend/
 ├── package.json                    scripts below; deps: zod, @aws-sdk/*; dev: jest, @swc/jest, aws-sdk-client-mock, serverless
 ├── tsconfig.json                   extends ../tsconfig.base.json; types: node, jest
 ├── serverless.yml                  service, provider, build, functions, resources, outputs
-├── jest.config.mjs                 unit tests: tests/unit/**
-├── jest.integration.config.mjs     integration tests: tests/integration/**, longer timeout
+├── jest.config.mjs                 unit tests: specs/unit/**
+├── jest.integration.config.mjs     integration tests: specs/integration/**, longer timeout
 ├── .env.local                      TABLE_NAME, QUEUE_URL, AWS_ENDPOINT_URL_* for the local runner (git-ignored; .env.example committed)
 ├── src/
 │   ├── deps.ts                     builds { repo, queue, provider, config, now, newId } once per container
@@ -50,7 +50,7 @@ backend/
 │   ├── table.ts                    table definition + ensureTable() (also used by the integration harness)
 │   ├── setup.ts                    CLI: create the table in DynamoDB Local if missing
 │   └── elasticmq.conf              main queue + DLQ, visibility timeout, redrive policy
-└── tests/
+└── specs/
     ├── helpers/
     │   ├── mocks.ts                jest.fn() NotificationRepository, QueueProducer, NotificationProvider with safe defaults
     │   ├── events.ts               builders for APIGatewayProxyEventV2 and SQSEvent
@@ -143,7 +143,7 @@ Dependency direction is strictly downward: `handlers → services → (domain | 
 {
   "extends": "../tsconfig.base.json", // strict, ES2022, bundler resolution, noUncheckedIndexedAccess
   "compilerOptions": { "types": ["node", "jest"], "noEmit": true },
-  "include": ["src", "local", "tests", "jest.*.mjs"],
+  "include": ["src", "local", "specs", "jest.*.mjs"],
 }
 ```
 
@@ -155,7 +155,7 @@ export default {
   transform: { '^.+\\.ts$': ['@swc/jest', { jsc: { target: 'es2022', parser: { syntax: 'typescript' } } }] },
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: { '^(\\.{1,2}/.*)\\.js$': '$1' }, // ESM-style relative imports
-  roots: ['<rootDir>/tests/unit', '<rootDir>/src'],
+  roots: ['<rootDir>/specs/unit', '<rootDir>/src'],
   testMatch: ['**/*.spec.ts'],
   clearMocks: true,
   setupFilesAfterEnv: ['aws-sdk-client-mock-jest'],
@@ -176,8 +176,8 @@ export default {
 import base from './jest.config.mjs';
 export default {
   ...base,
-  roots: ['<rootDir>/tests/integration'],
-  setupFiles: ['<rootDir>/tests/integration/env.ts'],
+  roots: ['<rootDir>/specs/integration'],
+  setupFiles: ['<rootDir>/specs/integration/env.ts'],
   testTimeout: 30_000,
   coverageThreshold: undefined,
 };
@@ -249,7 +249,7 @@ invocation with `Invalid configuration: TABLE_NAME is required` rather than an S
 
 ```mermaid
 flowchart LR
-  U["Unit — jest<br/>tests/unit/**/*.spec.ts<br/>jest.fn() mocks + aws-sdk-client-mock<br/>~1 s"] --> I["Integration — jest --config jest.integration.config.mjs<br/>tests/integration/**<br/>DynamoDB Local + ElasticMQ<br/>~15 s"] --> E["Manual E2E<br/>bun run dev + browser"]
+  U["Unit — jest<br/>specs/unit/**/*.spec.ts<br/>jest.fn() mocks + aws-sdk-client-mock<br/>~1 s"] --> I["Integration — jest --config jest.integration.config.mjs<br/>specs/integration/**<br/>DynamoDB Local + ElasticMQ<br/>~15 s"] --> E["Manual E2E<br/>bun run dev + browser"]
 ```
 
 ### Unit — what each suite asserts
@@ -268,7 +268,7 @@ flowchart LR
 | `lib/http`, `lib/config`, `lib/errors`           | wrapper mapping table; env parsing; error → status/code                                                                                                                                                                                                                                         | none                              |
 
 Pattern for a service test — every dependency is a `jest.fn()` with a harmless default (`makeDeps` in
-`tests/helpers/mocks.ts`); a test stubs only the calls it needs and asserts the calls it expects:
+`specs/helpers/mocks.ts`); a test stubs only the calls it needs and asserts the calls it expects:
 
 ```ts
 const deps = makeDeps();

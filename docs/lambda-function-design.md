@@ -113,7 +113,7 @@ backend/
 │   ├── server.ts                   Bun HTTP server + SQS poller → the same handlers
 │   ├── setup.ts                    creates the table in DynamoDB Local
 │   └── elasticmq.conf
-└── tests/
+└── specs/
     ├── unit/                       services (jest.fn() mocks), domain, handlers, repositories (aws-sdk-client-mock)
     └── integration/                against DynamoDB Local + ElasticMQ
 ```
@@ -338,11 +338,11 @@ All suites run on Jest (`@swc/jest` transform); see [backend-design.md](backend-
 
 | What                     | Where                     | Doubles                                                                                       |
 | ------------------------ | ------------------------- | --------------------------------------------------------------------------------------------- |
-| `domain/lifecycle.ts`    | `tests/unit/domain`       | none                                                                                          |
-| services                 | `tests/unit/services`     | `jest.fn()` `repo`, `queue`, `provider` stubbed per test; fixed `now` / `newId`               |
-| `lib/http.ts` + handlers | `tests/unit/handlers`     | services stubbed; asserts status, envelope, `Location`, 413                                   |
-| repositories / producer  | `tests/unit/repositories` | `aws-sdk-client-mock` — asserts the exact `UpdateItem` / `Query` inputs and cursor round-trip |
-| whole pipeline           | `tests/integration`       | DynamoDB Local + ElasticMQ; invokes the real handlers with real events                        |
+| `domain/lifecycle.ts`    | `specs/unit/domain`       | none                                                                                          |
+| services                 | `specs/unit/services`     | `jest.fn()` `repo`, `queue`, `provider` stubbed per test; fixed `now` / `newId`               |
+| `lib/http.ts` + handlers | `specs/unit/handlers`     | services stubbed; asserts status, envelope, `Location`, 413                                   |
+| repositories / producer  | `specs/unit/repositories` | `aws-sdk-client-mock` — asserts the exact `UpdateItem` / `Query` inputs and cursor round-trip |
+| whole pipeline           | `specs/integration`       | DynamoDB Local + ElasticMQ; invokes the real handlers with real events                        |
 
 ## Alternatives considered
 

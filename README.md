@@ -105,7 +105,7 @@ the code (`backend/src/domain/lifecycle.ts`):
 ├── docs/                   architecture diagram; backend, DynamoDB, SQS, Lambda, API and frontend design docs
 ├── shared/                 @noti/shared — the API contract, used by both sides
 │   ├── src/                zod schemas, types, constants
-│   └── tests/
+│   └── specs/
 ├── backend/                Serverless service (Lambda runs Node.js 22) — see docs/backend-design.md
 │   ├── serverless.yml      functions, events, per-function IAM, DynamoDB + SQS resources
 │   ├── jest.config.mjs     unit tests (@swc/jest); jest.integration.config.mjs for the emulator suite
@@ -118,14 +118,14 @@ the code (`backend/src/domain/lifecycle.ts`):
 │   │   ├── providers/      NotificationProvider interface + simulated implementation
 │   │   └── lib/            config, errors, HTTP helpers, logger
 │   ├── local/              local runner (HTTP server + SQS poller), table bootstrap, elasticmq.conf
-│   └── tests/              helpers/ (jest.fn() mocks, event builders), unit/, integration/
+│   └── specs/              helpers/ (jest.fn() mocks, event builders), unit/, integration/
 └── frontend/               Next.js App Router app, statically exported
     ├── jest.config.mjs     next/jest + jsdom + Testing Library
     ├── src/app/            layout, page, providers
     ├── src/components/     notification-form/, notification-list/, ui/ (shadcn)
     ├── src/hooks/          TanStack Query hooks (list polling, create mutation)
     ├── src/lib/            typed API client, query keys, formatting helpers
-    └── tests/              Jest: lib/, hooks/, components/
+    └── specs/              Jest: lib/, hooks/, components/
 ```
 
 ## Getting started
@@ -284,9 +284,9 @@ nothing.
 | **Store**    | `createNotification` service → `repo.create` (`backend/src/repositories/notificationRepository.ts`)    | Adds `id` (UUID v4), `status: PENDING`, `attempts: 0`, `createdAt`/`updatedAt`; `PutItem` into `notification-requests-{stage}` with `attribute_not_exists(id)` so an id can never be overwritten; `userId` is a key of the `byUser` index, so the item is immediately queryable per user. Then enqueues a pointer on SQS and marks the item `QUEUED`. | `503 ENQUEUE_FAILED` — the item is kept and marked `FAILED`, never lost silently |
 | **Respond**  | `httpHandler` envelope                                                                                 | `202 Accepted`, `Location: /notifications/{id}`, and the stored item in `data`.                                                                                                                                                                                                                                                                       | Every error shares the envelope in [Errors](#errors)                             |
 
-Covered by tests at each level: `shared/tests/schemas.spec.ts` (every rule), `backend/tests/unit/handlers/http.spec.ts`
+Covered by tests at each level: `shared/specs/schemas.spec.ts` (every rule), `backend/specs/unit/handlers/http.spec.ts`
 (`202` + `Location`, `400 VALIDATION_ERROR`, `400 INVALID_JSON`, `503 ENQUEUE_FAILED`), and
-`backend/tests/integration/createAndProcess.spec.ts` (the item really lands in DynamoDB Local as `QUEUED`, SMS without
+`backend/specs/integration/createAndProcess.spec.ts` (the item really lands in DynamoDB Local as `QUEUED`, SMS without
 a `subject` attribute).
 
 ### `GET /notifications?limit=20&cursor=<opaque>&userId=<id>` — list, newest first
@@ -409,10 +409,10 @@ flowchart TB
 
 | Level                           | What it covers                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | How                                                                            |
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| **`shared/tests`**              | Every validation rule per channel, trimming, unknown-field rejection, and the exact error paths/messages the frontend maps onto fields.                                                                                                                                                                                                                                                                                                                                                 | Jest, table-driven cases.                                                      |
-| **`backend/tests/unit`**        | Lifecycle rules (every allowed and forbidden transition); services with `jest.fn()` mocks of the repository/queue/provider — asserting the exact calls made (write before enqueue, `enqueueFailed` on SQS error, `retryScheduled` vs. `failed`, no provider call when the claim is refused); handlers — envelope shape, status codes, `Location` header, body-size limit; repositories — the generated `UpdateItem`/`Query` inputs and cursor round-trips, using `aws-sdk-client-mock`. | Jest `*.spec.ts` with `jest.fn()` mocks and `aws-sdk-client-mock`, no network. |
-| **`backend/tests/integration`** | The real pipeline against DynamoDB Local + ElasticMQ: create → queued → processed → `SENT`/`FAILED`, pagination across pages, conditional-update conflicts, and that only failed batch items are redelivered.                                                                                                                                                                                                                                                                           | `bun run test:integration` (Jest, `--runInBand`) after `docker compose up`.    |
-| **`frontend/tests`**            | Form validation and error mapping, success/error toasts, list rendering and status badges, polling start/stop, the API client's error handling — with the API mocked at the `fetch` boundary.                                                                                                                                                                                                                                                                                           | Jest + Testing Library (`jsdom`), real `QueryClient` per test.                 |
+| **`shared/specs`**              | Every validation rule per channel, trimming, unknown-field rejection, and the exact error paths/messages the frontend maps onto fields.                                                                                                                                                                                                                                                                                                                                                 | Jest, table-driven cases.                                                      |
+| **`backend/specs/unit`**        | Lifecycle rules (every allowed and forbidden transition); services with `jest.fn()` mocks of the repository/queue/provider — asserting the exact calls made (write before enqueue, `enqueueFailed` on SQS error, `retryScheduled` vs. `failed`, no provider call when the claim is refused); handlers — envelope shape, status codes, `Location` header, body-size limit; repositories — the generated `UpdateItem`/`Query` inputs and cursor round-trips, using `aws-sdk-client-mock`. | Jest `*.spec.ts` with `jest.fn()` mocks and `aws-sdk-client-mock`, no network. |
+| **`backend/specs/integration`** | The real pipeline against DynamoDB Local + ElasticMQ: create → queued → processed → `SENT`/`FAILED`, pagination across pages, conditional-update conflicts, and that only failed batch items are redelivered.                                                                                                                                                                                                                                                                           | `bun run test:integration` (Jest, `--runInBand`) after `docker compose up`.    |
+| **`frontend/specs`**            | Form validation and error mapping, success/error toasts, list rendering and status badges, polling start/stop, the API client's error handling — with the API mocked at the `fetch` boundary.                                                                                                                                                                                                                                                                                           | Jest + Testing Library (`jsdom`), real `QueryClient` per test.                 |
 | **Manual end-to-end**           | Submit from the browser, watch the status change, trigger both failure branches with a `fail@…` recipient and `SIMULATED_FAILURE_RATE`.                                                                                                                                                                                                                                                                                                                                                 | `bun run dev:backend` + `bun run dev:frontend`.                                |
 
 What is deliberately **not** tested: the CloudFormation in `serverless.yml` (validated by `serverless package`

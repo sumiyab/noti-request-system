@@ -4,7 +4,7 @@ const config = [
   ...base,
   {
     // Test doubles are async by contract, not by body; matcher helpers return `any`.
-    files: ['tests/**'],
+    files: ['specs/**'],
     rules: {
       '@typescript-eslint/require-await': 'off',
       '@typescript-eslint/unbound-method': 'off',

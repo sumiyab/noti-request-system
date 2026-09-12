@@ -2,7 +2,7 @@
 export default {
   testEnvironment: 'node',
   transform: { '^.+\\.ts$': ['@swc/jest', { jsc: { target: 'es2022', parser: { syntax: 'typescript' } } }] },
-  roots: ['<rootDir>/tests/unit'],
+  roots: ['<rootDir>/specs/unit'],
   testMatch: ['**/*.spec.ts'],
   clearMocks: true,
   setupFilesAfterEnv: ['aws-sdk-client-mock-jest'],
