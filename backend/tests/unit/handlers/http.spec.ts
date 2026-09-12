@@ -2,8 +2,8 @@ import { createHandler as createCreate } from '../../../src/handlers/http/create
 import { createHandler as createGet } from '../../../src/handlers/http/getNotification';
 import { createHandler as createList } from '../../../src/handlers/http/listNotifications';
 import { context, httpEvent, parseResponse } from '../../helpers/events';
-import { makeDeps } from '../../helpers/fakes';
 import { ID, USER_ID, emailInput, stored } from '../../helpers/fixtures';
+import { makeDeps, transitioned } from '../../helpers/mocks';
 
 const invoke = async (handler: ReturnType<typeof createCreate>, event: ReturnType<typeof httpEvent>) =>
   parseResponse(await handler(event, context, () => {}));
@@ -11,6 +11,7 @@ const invoke = async (handler: ReturnType<typeof createCreate>, event: ReturnTyp
 describe('POST /notifications', () => {
   test('202 with Location and the stored item', async () => {
     const deps = makeDeps();
+    deps.repo.transition.mockResolvedValueOnce(transitioned(stored({ status: 'QUEUED' })));
     const res = await invoke(
       createCreate(() => deps),
       httpEvent({ method: 'POST', body: emailInput }),
@@ -64,7 +65,8 @@ describe('POST /notifications', () => {
 
   test('503 ENQUEUE_FAILED when SQS is down', async () => {
     const deps = makeDeps();
-    deps.queue.failWith = new Error('down');
+    deps.queue.send.mockRejectedValueOnce(new Error('down'));
+    deps.repo.transition.mockResolvedValueOnce(transitioned(stored({ status: 'FAILED' })));
     const res = await invoke(
       createCreate(() => deps),
       httpEvent({ method: 'POST', body: emailInput }),
@@ -77,24 +79,24 @@ describe('POST /notifications', () => {
 describe('GET /notifications', () => {
   test('200 with a page and defaults', async () => {
     const deps = makeDeps();
-    deps.repo.seed(stored());
+    deps.repo.list.mockResolvedValueOnce({ data: [stored()], nextCursor: null });
     const res = await invoke(
       createList(() => deps),
       httpEvent({}),
     );
     expect(res.statusCode).toBe(200);
     expect(res.json).toEqual({ data: [stored()], nextCursor: null });
+    expect(deps.repo.list).toHaveBeenCalledWith({ limit: 20 });
   });
 
-  test('filters by userId', async () => {
+  test('passes limit, cursor and userId through validated', async () => {
     const deps = makeDeps();
-    deps.repo.seed(stored()).seed(stored({ id: '1'.padEnd(36, '0'), userId: 'someone-else' }));
     const res = await invoke(
       createList(() => deps),
-      httpEvent({ query: { userId: USER_ID } }),
+      httpEvent({ query: { limit: '5', cursor: 'abc', userId: ` ${USER_ID} ` } }),
     );
     expect(res.statusCode).toBe(200);
-    expect(res.json).toEqual({ data: [stored()], nextCursor: null });
+    expect(deps.repo.list).toHaveBeenCalledWith({ limit: 5, cursor: 'abc', userId: USER_ID });
   });
 
   test('400 for a bad userId', async () => {
@@ -119,7 +121,7 @@ describe('GET /notifications', () => {
 describe('GET /notifications/{id}', () => {
   test('200', async () => {
     const deps = makeDeps();
-    deps.repo.seed(stored());
+    deps.repo.get.mockResolvedValueOnce(stored());
     const res = await invoke(
       createGet(() => deps),
       httpEvent({ path: '/notifications/{id}', pathParameters: { id: ID } }),

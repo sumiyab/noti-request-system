@@ -67,7 +67,7 @@ flowchart TB
 | **lib**                              | Config, error types, HTTP helpers, logger — shared plumbing                                   | —                                                       | —                                    |
 
 The rule that makes this testable: **services receive their dependencies as arguments**. Unit tests pass
-in-memory fakes; the handlers pass the real AWS-backed implementations built once in `deps.ts`.
+`jest.fn()` mocks; the handlers pass the real AWS-backed implementations built once in `deps.ts`.
 
 ## Source tree
 
@@ -114,7 +114,7 @@ backend/
 │   ├── setup.ts                    creates the table in DynamoDB Local
 │   └── elasticmq.conf
 └── tests/
-    ├── unit/                       services (fakes), domain, handlers, repositories (aws-sdk-client-mock)
+    ├── unit/                       services (jest.fn() mocks), domain, handlers, repositories (aws-sdk-client-mock)
     └── integration/                against DynamoDB Local + ElasticMQ
 ```
 
@@ -339,7 +339,7 @@ All suites run on Jest (`@swc/jest` transform); see [backend-design.md](backend-
 | What                     | Where                     | Doubles                                                                                       |
 | ------------------------ | ------------------------- | --------------------------------------------------------------------------------------------- |
 | `domain/lifecycle.ts`    | `tests/unit/domain`       | none                                                                                          |
-| services                 | `tests/unit/services`     | in-memory `repo`, `queue`, `provider`; fixed `now` / `newId`                                  |
+| services                 | `tests/unit/services`     | `jest.fn()` `repo`, `queue`, `provider` stubbed per test; fixed `now` / `newId`               |
 | `lib/http.ts` + handlers | `tests/unit/handlers`     | services stubbed; asserts status, envelope, `Location`, 413                                   |
 | repositories / producer  | `tests/unit/repositories` | `aws-sdk-client-mock` — asserts the exact `UpdateItem` / `Query` inputs and cursor round-trip |
 | whole pipeline           | `tests/integration`       | DynamoDB Local + ElasticMQ; invokes the real handlers with real events                        |

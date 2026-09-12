@@ -52,23 +52,23 @@ backend/
 │   └── elasticmq.conf              main queue + DLQ, visibility timeout, redrive policy
 └── tests/
     ├── helpers/
-    │   ├── fakes.ts                in-memory NotificationRepository, QueueProducer, NotificationProvider
+    │   ├── mocks.ts                jest.fn() NotificationRepository, QueueProducer, NotificationProvider with safe defaults
     │   ├── events.ts               builders for APIGatewayProxyEventV2 and SQSEvent
     │   └── fixtures.ts             sample inputs and stored items per channel
     ├── unit/
-    │   ├── domain/lifecycle.test.ts
-    │   ├── services/*.test.ts
-    │   ├── handlers/*.test.ts
-    │   ├── repositories/*.test.ts  (aws-sdk-client-mock)
-    │   ├── queue/*.test.ts
-    │   ├── providers/simulatedProvider.test.ts
-    │   └── lib/*.test.ts
+    │   ├── domain/lifecycle.spec.ts
+    │   ├── services/*.spec.ts
+    │   ├── handlers/*.spec.ts
+    │   ├── repositories/*.spec.ts  (aws-sdk-client-mock)
+    │   ├── queue/*.spec.ts
+    │   ├── providers/simulatedProvider.spec.ts
+    │   └── lib/*.spec.ts
     └── integration/
         ├── env.ts                  emulator endpoints (Jest does not read .env files)
         ├── harness.ts              real handlers + SDK clients; recreates the table and purges the queue per file
-        ├── createAndProcess.test.ts
-        ├── pagination.test.ts
-        └── retries.test.ts
+        ├── createAndProcess.spec.ts
+        ├── pagination.spec.ts
+        └── retries.spec.ts
 ```
 
 Every `src/` file is under the 160-line lint cap; the service files are the largest (~80–120 lines each).
@@ -156,7 +156,7 @@ export default {
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: { '^(\\.{1,2}/.*)\\.js$': '$1' }, // ESM-style relative imports
   roots: ['<rootDir>/tests/unit', '<rootDir>/src'],
-  testMatch: ['**/*.test.ts'],
+  testMatch: ['**/*.spec.ts'],
   clearMocks: true,
   setupFilesAfterEnv: ['aws-sdk-client-mock-jest'],
   coverageThreshold: { global: { branches: 85, lines: 90 } },
@@ -249,39 +249,43 @@ invocation with `Invalid configuration: TABLE_NAME is required` rather than an S
 
 ```mermaid
 flowchart LR
-  U["Unit — jest<br/>tests/unit/**<br/>fakes + aws-sdk-client-mock<br/>~1 s"] --> I["Integration — jest --config jest.integration.config.mjs<br/>tests/integration/**<br/>DynamoDB Local + ElasticMQ<br/>~15 s"] --> E["Manual E2E<br/>bun run dev + browser"]
+  U["Unit — jest<br/>tests/unit/**/*.spec.ts<br/>jest.fn() mocks + aws-sdk-client-mock<br/>~1 s"] --> I["Integration — jest --config jest.integration.config.mjs<br/>tests/integration/**<br/>DynamoDB Local + ElasticMQ<br/>~15 s"] --> E["Manual E2E<br/>bun run dev + browser"]
 ```
 
 ### Unit — what each suite asserts
 
-| Suite                                            | Cases                                                                                                                                                                                                                                                                                           | Doubles                                |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| `domain/lifecycle`                               | every allowed transition; every forbidden one throws / returns conflict; terminal states never move                                                                                                                                                                                             | none                                   |
-| `services/createNotification`                    | PENDING put → send → QUEUED update, in that order; send failure → FAILED + `EnqueueFailedError`; ids and timestamps come from `deps.newId` / `deps.now`                                                                                                                                         | in-memory repo + queue fakes           |
-| `services/processNotification`                   | claim → sent; permanent error → failed; transient with attempts left → retry; transient on 3rd attempt → failed; claim conflict → skipped                                                                                                                                                       | fakes; provider fake scripted per test |
-| `services/listNotifications` / `getNotification` | limit passthrough; cursor passthrough; not found → `NotFoundError`                                                                                                                                                                                                                              | repo fake                              |
-| `handlers/http/*`                                | `202` + `Location`; `400` `VALIDATION_ERROR` with every `details` entry; `413` at 32 KB + 1; `INVALID_JSON`; `404`; unknown error → `500` with generic body and `requestId`                                                                                                                     | services stubbed with `jest.fn()`      |
-| `handlers/queue/processNotifications`            | one failing record of three → exactly one `batchItemFailures` entry; unparseable body → reported; never throws                                                                                                                                                                                  | service stubbed                        |
-| `repositories/notificationRepository`            | exact `PutItemCommand` / `UpdateItemCommand` inputs (`ConditionExpression`, `ExpressionAttributeValues`); `ConditionalCheckFailedException` → conflict result; `QueryCommand` on the index with `ScanIndexForward: false`; cursor encode/decode round-trip; tampered cursor → `ValidationError` | `aws-sdk-client-mock`                  |
-| `queue/producer`                                 | `SendMessageCommand` with the JSON body and queue URL                                                                                                                                                                                                                                           | `aws-sdk-client-mock`                  |
-| `providers/simulatedProvider`                    | `fail@` → permanent; seeded RNG → transient; otherwise accepted with an id                                                                                                                                                                                                                      | `deps.random` injected                 |
-| `lib/http`, `lib/config`, `lib/errors`           | wrapper mapping table; env parsing; error → status/code                                                                                                                                                                                                                                         | none                                   |
+| Suite                                            | Cases                                                                                                                                                                                                                                                                                           | Doubles                           |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `domain/lifecycle`                               | every allowed transition; every forbidden one throws / returns conflict; terminal states never move                                                                                                                                                                                             | none                              |
+| `services/createNotification`                    | PENDING put → send → QUEUED update, in that order; send failure → FAILED + `EnqueueFailedError`; ids and timestamps come from `deps.newId` / `deps.now`                                                                                                                                         | `jest.fn()` repo + queue mocks    |
+| `services/processNotification`                   | claim → sent; permanent error → failed; transient with attempts left → retry; transient on 3rd attempt → failed; claim conflict → skipped                                                                                                                                                       | mocks; provider stubbed per test  |
+| `services/listNotifications` / `getNotification` | limit passthrough; cursor passthrough; not found → `NotFoundError`                                                                                                                                                                                                                              | repo fake                         |
+| `handlers/http/*`                                | `202` + `Location`; `400` `VALIDATION_ERROR` with every `details` entry; `413` at 32 KB + 1; `INVALID_JSON`; `404`; unknown error → `500` with generic body and `requestId`                                                                                                                     | services stubbed with `jest.fn()` |
+| `handlers/queue/processNotifications`            | one failing record of three → exactly one `batchItemFailures` entry; unparseable body → reported; never throws                                                                                                                                                                                  | service stubbed                   |
+| `repositories/notificationRepository`            | exact `PutItemCommand` / `UpdateItemCommand` inputs (`ConditionExpression`, `ExpressionAttributeValues`); `ConditionalCheckFailedException` → conflict result; `QueryCommand` on the index with `ScanIndexForward: false`; cursor encode/decode round-trip; tampered cursor → `ValidationError` | `aws-sdk-client-mock`             |
+| `queue/producer`                                 | `SendMessageCommand` with the JSON body and queue URL                                                                                                                                                                                                                                           | `aws-sdk-client-mock`             |
+| `providers/simulatedProvider`                    | `fail@` → permanent; seeded RNG → transient; otherwise accepted with an id                                                                                                                                                                                                                      | `deps.random` injected            |
+| `lib/http`, `lib/config`, `lib/errors`           | wrapper mapping table; env parsing; error → status/code                                                                                                                                                                                                                                         | none                              |
 
-Pattern for a service test — no mocks framework, just the fakes:
+Pattern for a service test — every dependency is a `jest.fn()` with a harmless default (`makeDeps` in
+`tests/helpers/mocks.ts`); a test stubs only the calls it needs and asserts the calls it expects:
 
 ```ts
-const deps = makeFakeDeps({ provider: providerThatFailsWith({ retryable: true }) });
-await deps.repo.put(storedItem({ status: 'QUEUED', attempts: 0 }));
+const deps = makeDeps();
+deps.repo.transition.mockResolvedValueOnce(transitioned(stored({ status: 'PROCESSING', attempts: 2 })));
+deps.provider.send.mockRejectedValueOnce(new ProviderError('Provider timeout', true));
 
-const result = await processNotification(deps, { notificationId: storedItem.id });
+await expect(processNotification(deps, { notificationId: ID })).resolves.toBe('retry');
 
-expect(result).toBe('retry');
-expect(deps.repo.get(storedItem.id)).toMatchObject({
-  status: 'QUEUED',
-  attempts: 1,
-  lastError: expect.any(String),
+expect(deps.repo.transition).toHaveBeenNthCalledWith(2, ID, 'retryScheduled', {
+  now: NOW,
+  lastError: 'Provider timeout',
 });
 ```
+
+The tests are interaction-based on purpose: the service's contract is _which_ transition it asks for and
+_when_ (before or after the provider call), and the transition rules themselves are covered once, in
+`domain/lifecycle.spec.ts` and the repository's `ConditionExpression` tests.
 
 ### Integration — the real pipeline
 

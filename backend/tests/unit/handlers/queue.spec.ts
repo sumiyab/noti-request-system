@@ -1,8 +1,8 @@
 import { createHandler } from '../../../src/handlers/queue/processNotifications';
 import { ProviderError } from '../../../src/providers/notificationProvider';
 import { context, sqsEvent, sqsRecord } from '../../helpers/events';
-import { makeDeps, providerThat } from '../../helpers/fakes';
 import { stored } from '../../helpers/fixtures';
+import { makeDeps, transitioned } from '../../helpers/mocks';
 
 const ids = ['a', 'b', 'c'].map((c) => c.repeat(8) + '-0000-4000-8000-000000000000') as [
   string,
@@ -10,13 +10,23 @@ const ids = ['a', 'b', 'c'].map((c) => c.repeat(8) + '-0000-4000-8000-0000000000
   string,
 ];
 
+/** Every claim succeeds with a PROCESSING copy of the requested id. */
+const claimAll = (deps: ReturnType<typeof makeDeps>) =>
+  deps.repo.transition.mockImplementation((id, transition) =>
+    Promise.resolve(
+      transitioned(stored({ id, status: transition === 'claimed' ? 'PROCESSING' : 'SENT', attempts: 1 })),
+    ),
+  );
+
 describe('processNotifications handler', () => {
   test('reports only the records that need a retry', async () => {
-    const provider = providerThat((n) =>
-      n.id === ids[1] ? new ProviderError('timeout', true) : { providerMessageId: 'ok' },
+    const deps = makeDeps();
+    claimAll(deps);
+    deps.provider.send.mockImplementation((n) =>
+      n.id === ids[1]
+        ? Promise.reject(new ProviderError('timeout', true))
+        : Promise.resolve({ providerMessageId: 'ok' }),
     );
-    const deps = makeDeps({ provider });
-    ids.forEach((id) => deps.repo.seed(stored({ id })));
 
     const result = await createHandler(() => deps)(
       sqsEvent(...ids.map((id, i) => sqsRecord({ notificationId: id }, `msg-${i}`))),
@@ -25,14 +35,15 @@ describe('processNotifications handler', () => {
     );
 
     expect(result).toEqual({ batchItemFailures: [{ itemIdentifier: 'msg-1' }] });
-    expect(deps.repo.items.get(ids[0])?.status).toBe('SENT');
-    expect(deps.repo.items.get(ids[1])?.status).toBe('QUEUED');
-    expect(deps.repo.items.get(ids[2])?.status).toBe('SENT');
+    expect(deps.repo.transition).toHaveBeenCalledWith(ids[0], 'sent', expect.anything());
+    expect(deps.repo.transition).toHaveBeenCalledWith(ids[1], 'retryScheduled', expect.anything());
+    expect(deps.repo.transition).toHaveBeenCalledWith(ids[2], 'sent', expect.anything());
   });
 
   test('an unparseable body is reported (→ DLQ after maxReceiveCount) and does not stop the batch', async () => {
     const deps = makeDeps();
-    deps.repo.seed(stored({ id: ids[0] }));
+    claimAll(deps);
+
     const result = await createHandler(() => deps)(
       sqsEvent(
         sqsRecord('not json', 'bad-1'),
@@ -42,18 +53,23 @@ describe('processNotifications handler', () => {
       context,
       () => {},
     );
+
     expect(result).toEqual({ batchItemFailures: [{ itemIdentifier: 'bad-1' }, { itemIdentifier: 'bad-2' }] });
-    expect(deps.repo.items.get(ids[0])?.status).toBe('SENT');
+    expect(deps.provider.send).toHaveBeenCalledTimes(1);
+    expect(deps.repo.transition).toHaveBeenCalledWith(ids[0], 'sent', expect.anything());
   });
 
   test('an unexpected error reports the record instead of throwing', async () => {
-    const deps = makeDeps({ provider: providerThat(() => new TypeError('bug')) });
-    deps.repo.seed(stored({ id: ids[0] }));
+    const deps = makeDeps();
+    claimAll(deps);
+    deps.provider.send.mockRejectedValueOnce(new TypeError('bug'));
+
     const result = await createHandler(() => deps)(
       sqsEvent(sqsRecord({ notificationId: ids[0] }, 'm')),
       context,
       () => {},
     );
+
     expect(result).toEqual({ batchItemFailures: [{ itemIdentifier: 'm' }] });
   });
 });
