@@ -450,4 +450,3 @@ Roughly in the order they would be worth doing:
    services) on every PR, and `serverless deploy` on merge.
 8. **Product features** — templates with variables, scheduled sends, per-recipient status history, and
    cancelling a request while it is still `QUEUED` (one more guarded transition).
-# noti-request-system

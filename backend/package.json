@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "echo \"@noti/backend: no tests yet\"",
-    "typecheck": "echo \"@noti/backend: no sources yet\""
+    "typecheck": "echo \"@noti/backend: no sources yet\"",
+    "lint": "echo \"@noti/backend: no sources yet\"",
+    "lint:fix": "echo \"@noti/backend: no sources yet\""
   }
 }
