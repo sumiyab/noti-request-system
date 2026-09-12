@@ -6,6 +6,7 @@ import {
   QueryCommand,
   UpdateCommand,
   type DynamoDBDocumentClient,
+  type QueryCommandInput,
 } from '@aws-sdk/lib-dynamodb';
 import { TRANSITIONS, isTerminal, type Transition } from '../domain/lifecycle';
 import { noopLogger, type Logger } from '../lib/logger';
@@ -44,14 +45,13 @@ export interface NotificationRepository {
 
 type Deps = { client: DynamoDBDocumentClient; tableName: string; log?: Logger };
 
-/** Which index answers a list query, and how to address its partition. */
-const listIndex = (
-  userId: string | undefined,
-): {
+/** The part of a Query that picks the index and its partition; the rest of the input is the same for both. */
+type ListQuery = Pick<Required<QueryCommandInput>, 'KeyConditionExpression' | 'ExpressionAttributeValues'> & {
   IndexName: ListIndex;
-  KeyConditionExpression: string;
-  ExpressionAttributeValues: Record<string, string>;
-} =>
+};
+
+/** Which index answers a list query, and how to address its partition. */
+const listIndex = (userId: string | undefined): ListQuery =>
   userId === undefined
     ? {
         IndexName: INDEX_BY_CREATED_AT,

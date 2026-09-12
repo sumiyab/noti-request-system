@@ -2,9 +2,11 @@ import { notificationSchema, type Notification } from '@noti/shared';
 import type { CursorKey } from './cursor';
 
 export const ENTITY_TYPE = 'NOTIFICATION';
-export const INDEX_BY_CREATED_AT = 'byCreatedAt' as const;
-export const INDEX_BY_USER = 'byUser' as const;
-export type ListIndex = typeof INDEX_BY_CREATED_AT | typeof INDEX_BY_USER;
+
+/** The two list indexes; `keyOf` builds a cursor in the shape of whichever one produced the page. */
+export type ListIndex = 'byCreatedAt' | 'byUser';
+export const INDEX_BY_CREATED_AT: ListIndex = 'byCreatedAt';
+export const INDEX_BY_USER: ListIndex = 'byUser';
 
 /** The stored item: the API shape plus the constant index partition key. Optional fields are omitted, not null. */
 export type NotificationItem = Notification & { entityType: typeof ENTITY_TYPE };
