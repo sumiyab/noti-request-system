@@ -8,8 +8,18 @@ import {
   type DynamoDBDocumentClient,
 } from '@aws-sdk/lib-dynamodb';
 import { TRANSITIONS, isTerminal, type Transition } from '../domain/lifecycle';
+import { noopLogger, type Logger } from '../lib/logger';
 import { decodeCursor, encodeCursor } from './cursor';
-import { ENTITY_TYPE, INDEX_BY_CREATED_AT, INDEX_BY_USER, fromItem, keyOf, toItem } from './item';
+import {
+  ENTITY_TYPE,
+  INDEX_BY_CREATED_AT,
+  INDEX_BY_USER,
+  fromItem,
+  keyOf,
+  toItem,
+  type ListIndex,
+  type NotificationItem,
+} from './item';
 
 export type Page = { data: Notification[]; nextCursor: string | null };
 
@@ -32,7 +42,27 @@ export interface NotificationRepository {
   transition(id: string, transition: Transition, options: TransitionOptions): Promise<TransitionResult>;
 }
 
-type Deps = { client: DynamoDBDocumentClient; tableName: string };
+type Deps = { client: DynamoDBDocumentClient; tableName: string; log?: Logger };
+
+/** Which index answers a list query, and how to address its partition. */
+const listIndex = (
+  userId: string | undefined,
+): {
+  IndexName: ListIndex;
+  KeyConditionExpression: string;
+  ExpressionAttributeValues: Record<string, string>;
+} =>
+  userId === undefined
+    ? {
+        IndexName: INDEX_BY_CREATED_AT,
+        KeyConditionExpression: 'entityType = :pk',
+        ExpressionAttributeValues: { ':pk': ENTITY_TYPE },
+      }
+    : {
+        IndexName: INDEX_BY_USER,
+        KeyConditionExpression: 'userId = :pk',
+        ExpressionAttributeValues: { ':pk': userId },
+      };
 
 /** Builds the UpdateItem pieces for a transition. Exported for the unit tests that assert the exact expressions. */
 export const buildTransitionUpdate = (transition: Transition, options: TransitionOptions) => {
@@ -76,7 +106,11 @@ export const buildTransitionUpdate = (transition: Transition, options: Transitio
   };
 };
 
-export const createDynamoNotificationRepository = ({ client, tableName }: Deps): NotificationRepository => ({
+export const createDynamoNotificationRepository = ({
+  client,
+  tableName,
+  log = noopLogger,
+}: Deps): NotificationRepository => ({
   create: async (notification) => {
     await client.send(
       new PutCommand({
@@ -95,30 +129,39 @@ export const createDynamoNotificationRepository = ({ client, tableName }: Deps):
   },
 
   list: async ({ limit, cursor, userId }) => {
-    const index = userId === undefined ? INDEX_BY_CREATED_AT : INDEX_BY_USER;
-    // Ask for one extra item: its presence is the only reliable "there is a next page" signal.
+    const index = listIndex(userId);
+    const exclusiveStartKey = cursor ? decodeCursor(cursor, { userId }) : undefined; // 400 before any I/O
+
+    // Ask for one extra item: its presence is the only reliable "there is a next page" signal
+    // (LastEvaluatedKey can be set even when nothing follows).
     const { Items = [] } = await client.send(
       new QueryCommand({
         TableName: tableName,
-        IndexName: index,
-        ...(userId === undefined
-          ? {
-              KeyConditionExpression: 'entityType = :entityType',
-              ExpressionAttributeValues: { ':entityType': ENTITY_TYPE },
-            }
-          : {
-              KeyConditionExpression: 'userId = :userId',
-              ExpressionAttributeValues: { ':userId': userId },
-            }),
+        ...index,
         ScanIndexForward: false,
         Limit: limit + 1,
-        ...(cursor && { ExclusiveStartKey: decodeCursor(cursor, { userId }) }),
+        ...(exclusiveStartKey && { ExclusiveStartKey: exclusiveStartKey }),
       }),
     );
-    const page = Items.slice(0, limit).map(fromItem);
-    const last = page[page.length - 1];
-    const nextCursor = Items.length > limit && last ? encodeCursor(keyOf(last, index)) : null;
-    return { data: page, nextCursor };
+    const hasMore = Items.length > limit;
+    const raw = Items.slice(0, limit);
+
+    // One item that no longer matches the schema must not take the whole page down: drop it, say so, and
+    // keep going. `get` stays strict — there a bad item is the only answer.
+    const data: Notification[] = [];
+    for (const item of raw) {
+      try {
+        data.push(fromItem(item));
+      } catch (error) {
+        log.warn('skipping stored item that does not match the current schema', { id: item.id, error });
+      }
+    }
+
+    // Continue from the last item *read*, not the last one kept, or a skipped item on the boundary would be
+    // re-read on every page. Index key attributes are guaranteed present on anything the index returned.
+    const last = raw[raw.length - 1] as NotificationItem | undefined;
+    const nextCursor = hasMore && last ? encodeCursor(keyOf(last, index.IndexName)) : null;
+    return { data, nextCursor };
   },
 
   transition: async (id, transition, options) => {

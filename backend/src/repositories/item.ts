@@ -2,8 +2,9 @@ import { notificationSchema, type Notification } from '@noti/shared';
 import type { CursorKey } from './cursor';
 
 export const ENTITY_TYPE = 'NOTIFICATION';
-export const INDEX_BY_CREATED_AT = 'byCreatedAt';
-export const INDEX_BY_USER = 'byUser';
+export const INDEX_BY_CREATED_AT = 'byCreatedAt' as const;
+export const INDEX_BY_USER = 'byUser' as const;
+export type ListIndex = typeof INDEX_BY_CREATED_AT | typeof INDEX_BY_USER;
 
 /** The stored item: the API shape plus the constant index partition key. Optional fields are omitted, not null. */
 export type NotificationItem = Notification & { entityType: typeof ENTITY_TYPE };
@@ -13,7 +14,10 @@ export const toItem = (notification: Notification): NotificationItem => ({
   entityType: ENTITY_TYPE,
 });
 
-/** Validates on the way out so a hand-edited or legacy item surfaces as an error, not as bad data. */
+/**
+ * Validates on the way out so a hand-edited or legacy item surfaces as an error, not as bad data. `get`
+ * lets that error through; `list` catches it per item so one bad row cannot hide the rest of the page.
+ */
 export const fromItem = (item: Record<string, unknown>): Notification => {
   const { entityType: _entityType, ...rest } = item;
   return notificationSchema.parse(rest);
@@ -22,7 +26,7 @@ export const fromItem = (item: Record<string, unknown>): Notification => {
 /** The key a page continues from, in the shape of the index that produced it. */
 export const keyOf = (
   notification: Pick<Notification, 'id' | 'userId' | 'createdAt'>,
-  index: typeof INDEX_BY_CREATED_AT | typeof INDEX_BY_USER,
+  index: ListIndex,
 ): CursorKey =>
   index === INDEX_BY_USER
     ? { id: notification.id, userId: notification.userId, createdAt: notification.createdAt }

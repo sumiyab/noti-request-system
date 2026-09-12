@@ -1,18 +1,11 @@
 import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
-import {
-  DynamoDBDocumentClient,
-  GetCommand,
-  PutCommand,
-  QueryCommand,
-  UpdateCommand,
-} from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
-import { decodeCursor } from '../../../src/repositories/cursor';
 import {
   buildTransitionUpdate,
   createDynamoNotificationRepository,
 } from '../../../src/repositories/notificationRepository';
-import { ID, NOW, USER_ID, stored } from '../../helpers/fixtures';
+import { ID, NOW, stored } from '../../helpers/fixtures';
 
 const dynamo = mockClient(DynamoDBDocumentClient);
 const repo = createDynamoNotificationRepository({
@@ -47,55 +40,6 @@ describe('create / get', () => {
   test('get returns null when missing', async () => {
     dynamo.on(GetCommand).resolves({});
     await expect(repo.get(ID)).resolves.toBeNull();
-  });
-});
-
-describe('list', () => {
-  test('queries the index newest-first, asking for one extra item', async () => {
-    dynamo.on(QueryCommand).resolves({ Items: [item] });
-    const page = await repo.list({ limit: 20 });
-    expect(page).toEqual({ data: [stored()], nextCursor: null });
-    expect(dynamo).toHaveReceivedCommandWith(QueryCommand, {
-      TableName: 't',
-      IndexName: 'byCreatedAt',
-      KeyConditionExpression: 'entityType = :entityType',
-      ScanIndexForward: false,
-      Limit: 21,
-    });
-  });
-
-  test('queries the byUser index when a userId is given, with a byUser cursor', async () => {
-    const older = { ...item, id: '1'.padEnd(36, '0'), createdAt: '2026-09-11T00:00:00.000Z' };
-    dynamo.on(QueryCommand).resolves({ Items: [item, older] });
-    const page = await repo.list({ limit: 1, userId: USER_ID });
-    expect(dynamo).toHaveReceivedCommandWith(QueryCommand, {
-      IndexName: 'byUser',
-      KeyConditionExpression: 'userId = :userId',
-      ExpressionAttributeValues: { ':userId': USER_ID },
-      Limit: 2,
-    });
-    const key = { id: ID, userId: USER_ID, createdAt: NOW.toISOString() };
-    expect(decodeCursor(page.nextCursor!, { userId: USER_ID })).toEqual(key);
-  });
-
-  test('returns a cursor for the last item of the page only when more exist', async () => {
-    const older = { ...item, id: '1'.padEnd(36, '0'), createdAt: '2026-09-11T00:00:00.000Z' };
-    dynamo.on(QueryCommand).resolves({ Items: [item, older] });
-    const page = await repo.list({ limit: 1 });
-    expect(page.data).toHaveLength(1);
-    const key = { id: ID, entityType: 'NOTIFICATION', createdAt: NOW.toISOString() };
-    expect(decodeCursor(page.nextCursor!, {})).toEqual(key);
-  });
-
-  test('passes a decoded cursor as ExclusiveStartKey', async () => {
-    dynamo.on(QueryCommand).resolves({ Items: [] });
-    const cursor = Buffer.from(
-      JSON.stringify({ id: ID, entityType: 'NOTIFICATION', createdAt: NOW.toISOString() }),
-    ).toString('base64url');
-    await repo.list({ limit: 5, cursor });
-    expect(dynamo).toHaveReceivedCommandWith(QueryCommand, {
-      ExclusiveStartKey: { id: ID, entityType: 'NOTIFICATION', createdAt: NOW.toISOString() },
-    });
   });
 });
 

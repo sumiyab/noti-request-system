@@ -30,12 +30,13 @@ export const buildDeps = (config: Config = loadConfig()): Deps => {
   const dynamo = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
     marshallOptions: { removeUndefinedValues: true },
   });
+  const log = createLogger(config.logLevel);
   return {
-    repo: createDynamoNotificationRepository({ client: dynamo, tableName: config.tableName }),
+    repo: createDynamoNotificationRepository({ client: dynamo, tableName: config.tableName, log }),
     queue: createSqsProducer({ client: new SQSClient({}), queueUrl: config.queueUrl }),
     provider: createSimulatedProvider({ failureRate: config.simulatedFailureRate }),
     config,
-    log: createLogger(config.logLevel),
+    log,
     now: () => new Date(),
     newId: randomUUID,
   };
