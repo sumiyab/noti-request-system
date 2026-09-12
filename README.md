@@ -304,6 +304,24 @@ Strings are trimmed; unknown fields are rejected so typos never pass silently.
 Once processing has run, a request also carries `completedAt` (terminal states), `providerMessageId` (`SENT`)
 or `lastError` (retries and `FAILED`).
 
+#### How a request is received, validated, and stored
+
+Validation runs before any I/O, so only requests that pass every rule reach DynamoDB; a rejected request writes
+nothing.
+
+| Step         | Where                                                                                                  | What it does                                                                                                                                                                                                                                                  | On failure                                                                       |
+| ------------ | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| **Receive**  | API Gateway HTTP API → `createNotification` Lambda (`backend/src/handlers/http/createNotification.ts`) | Accepts `POST /notifications`; API Gateway answers CORS preflights, `httpHandler` rejects bodies over 32 KB before parsing.                                                                                                                                   | `413 PAYLOAD_TOO_LARGE`                                                          |
+| **Parse**    | `parseJsonBody` (`backend/src/lib/http.ts`)                                                            | Body must be present, valid JSON, and a JSON object (not an array or scalar).                                                                                                                                                                                 | `400 INVALID_JSON`                                                               |
+| **Validate** | `parseWith(createNotificationSchema)` — schema in `shared/src/schemas.ts`                              | Zod discriminated union on `channel`: the per-channel `recipient`/`subject`/`message` rules in the table above, trimming, and `strictObject` so unknown fields are rejected. The same schema validates the form, so the UI and API can never disagree.        | `400 VALIDATION_ERROR` with `details: [{ path, message }]` — one entry per field |
+| **Store**    | `createNotification` service → `repo.create` (`backend/src/repositories/notificationRepository.ts`)    | Adds `id` (UUID v4), `status: PENDING`, `attempts: 0`, `createdAt`/`updatedAt`; `PutItem` into `notification-requests-{stage}` with `attribute_not_exists(id)` so an id can never be overwritten. Then enqueues a pointer on SQS and marks the item `QUEUED`. | `503 ENQUEUE_FAILED` — the item is kept and marked `FAILED`, never lost silently |
+| **Respond**  | `httpHandler` envelope                                                                                 | `202 Accepted`, `Location: /notifications/{id}`, and the stored item in `data`.                                                                                                                                                                               | Every error shares the envelope in [Errors](#errors)                             |
+
+Covered by tests at each level: `shared/tests/schemas.test.ts` (every rule), `backend/tests/unit/handlers/http.test.ts`
+(`202` + `Location`, `400 VALIDATION_ERROR`, `400 INVALID_JSON`, `503 ENQUEUE_FAILED`), and
+`backend/tests/integration/createAndProcess.test.ts` (the item really lands in DynamoDB Local as `QUEUED`, SMS without
+a `subject` attribute).
+
 ### `GET /notifications?limit=20&cursor=<opaque>` — list, newest first
 
 `limit` is 1–100 (default 20). `cursor` is the `nextCursor` from the previous page; it is opaque to clients.
