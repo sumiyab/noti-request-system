@@ -420,6 +420,62 @@ Every error uses one envelope:
 
 ## Design decisions
 
+### Why I chose this — the short version
+
+The brief fixed the platform: TypeScript on Node.js, Serverless Framework, Lambda, API Gateway, DynamoDB, SQS,
+and a React/Next.js frontend, judged on being _clean, correct, maintainable, and not over-engineered_. So the
+decisions that were mine are about **how** to use those pieces, and every one of them was made against three
+questions: does it keep the system correct under real failure modes, can a reviewer run and read it in
+minutes, and can I defend it in one sentence.
+
+**Correctness first, in the database.** The hard part of a notification pipeline is not sending; it is what
+happens when SQS delivers a message twice, a worker crashes mid-send, or two workers race. I put the answer in
+one place: every status change is a DynamoDB `UpdateItem` whose `ConditionExpression` names the states it may
+start from (`domain/lifecycle.ts`). A duplicate or late message simply fails the condition. That single rule
+means I did not need FIFO queues, locks, or exactly-once anything — at-least-once delivery becomes harmless.
+
+**Let SQS be the retry engine.** Instead of building a scheduler, a transient failure returns the item to
+`QUEUED` and reports the batch item as failed; SQS redelivers after the 60 s visibility timeout. The attempt
+cap (`attempts < 3`) lives on the item, enforced by the same conditional update, so it holds even if SQS
+redelivers more often than expected. The dead-letter queue is a separate safety net for messages that crash
+the worker before it can record anything.
+
+**One schema, two sides.** The most common bug in a form-plus-API app is the two disagreeing about what is
+valid. `@noti/shared` holds the zod schemas; the form uses them as its resolver and the API re-validates with
+the same objects. A rule change is one commit that cannot leave the UI and backend out of step. This is the
+reason the repo is a Bun workspace monorepo rather than two repos.
+
+**Thin handlers, testable services.** Handlers parse the event and shape the response; services hold the rules
+and receive `repo`, `queue`, `provider`, `now`, `newId` through a factory. Services never import the AWS SDK,
+so their specs are plain `jest.fn()` mocks asserting _which_ call happens _when_ (write before enqueue;
+`retryScheduled` vs `failed`). The AWS-facing code is covered once, against DynamoDB Local and ElasticMQ, by
+the same handlers that run in Lambda — there is no local-mode branch in production code.
+
+**Record who sent it.** A notification is always sent on behalf of someone; without that the table is a log,
+not a record. `userId` is required, stored, returned, and indexed (`byUser`) so a user's history is one
+`Query`. It comes from the body only because the API has no authorizer; the one production change is to read
+it from the JWT instead — nothing below the handler moves.
+
+**Simulate delivery, not the lifecycle.** The provider is a one-class seam (`NotificationProvider`) with a
+simulator that raises both permanent and transient errors, so every branch of the state machine is exercised
+end to end. Wiring SES/SNS/FCM would add account setup to the reviewer's path and prove nothing about the
+pipeline.
+
+**Polling, static export, Vercel.** The UI has no server-side data, so Next.js exports plain files that can
+sit on any static host; TanStack Query turns "poll every 2 s while anything is in flight" into one option.
+Requests move through the pipeline in seconds, so WebSockets would be a second API for no visible gain.
+
+**Bun for the toolchain, Node for the runtime.** Bun gives one fast tool for installs, scripts, tests and the
+local runner; Lambda stays on `nodejs22.x` as the brief requires, and `jest`, `tsc` and `serverless` all
+execute on Node, so nothing Bun-specific ships.
+
+**What I deliberately left out** — authentication, rate limiting, exponential backoff, a transactional outbox
+for the millisecond `PENDING` window, real providers, WebSockets, CI. Each is listed under
+[Future improvements](#future-improvements) with the shape it would take; none is needed to demonstrate a
+correct, maintainable pipeline, and adding them would have been the over-engineering the brief warned against.
+
+### The full list
+
 Each choice below is the simplest option that keeps the system correct; the alternative that was rejected is
 noted so the reasoning can be checked.
 
