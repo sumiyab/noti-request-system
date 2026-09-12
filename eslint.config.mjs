@@ -27,10 +27,8 @@ export default tseslint.config(
     },
     plugins: { 'unused-imports': unusedImports, 'prefer-arrow-functions': preferArrow },
     rules: {
-      // Files stay small enough to read in one sitting.
-      'max-lines': ['error', { max: 160, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['error', { max: 160 }],
 
-      // One function style: `const fn = () => …`.
       'func-style': ['error', 'expression'],
       'prefer-arrow-callback': ['error', { allowNamedFunctions: false }],
       'prefer-arrow-functions/prefer-arrow-functions': [
@@ -38,7 +36,6 @@ export default tseslint.config(
         { classPropertiesAllowed: true, disallowPrototype: true, returnStyle: 'unchanged' },
       ],
 
-      // Unused imports, variables, functions, and parameters are errors; imports are auto-removed by --fix.
       '@typescript-eslint/no-unused-vars': 'off',
       'unused-imports/no-unused-imports': 'error',
       'unused-imports/no-unused-vars': [

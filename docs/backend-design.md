@@ -39,7 +39,7 @@ backend/
 │   │   └── queue/                  processNotifications.ts
 │   ├── services/                   createNotification.ts · listNotifications.ts · getNotification.ts · processNotification.ts
 │   ├── domain/                     lifecycle.ts
-│   ├── repositories/               notificationRepository.ts · item.ts · cursor.ts
+│   ├── repositories/               notificationRepository.ts · transitionUpdate.ts · item.ts · cursor.ts
 │   ├── queue/                      message.ts · producer.ts
 │   ├── providers/                  notificationProvider.ts · simulatedProvider.ts
 │   └── lib/                        config.ts · errors.ts · http.ts · logger.ts

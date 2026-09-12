@@ -1,10 +1,8 @@
 import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
-import {
-  buildTransitionUpdate,
-  createDynamoNotificationRepository,
-} from '../../../src/repositories/notificationRepository';
+import { createDynamoNotificationRepository } from '../../../src/repositories/notificationRepository';
+import { buildTransitionUpdate } from '../../../src/repositories/transitionUpdate';
 import { ID, NOW, stored } from '../../helpers/fixtures';
 
 const dynamo = mockClient(DynamoDBDocumentClient);

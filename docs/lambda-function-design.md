@@ -94,6 +94,7 @@ backend/
 │   │   └── lifecycle.ts            transitions table + `allowedFrom(transition)`
 │   ├── repositories/
 │   │   ├── notificationRepository.ts   interface + DynamoDB implementation
+│   │   ├── transitionUpdate.ts         UpdateItem expression + condition for each lifecycle transition
 │   │   ├── item.ts                 item ↔ DTO mapping, key builders
 │   │   └── cursor.ts               LastEvaluatedKey ↔ base64url cursor (validated)
 │   ├── queue/

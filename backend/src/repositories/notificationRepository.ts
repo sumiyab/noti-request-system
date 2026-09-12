@@ -8,7 +8,7 @@ import {
   type DynamoDBDocumentClient,
   type QueryCommandInput,
 } from '@aws-sdk/lib-dynamodb';
-import { TRANSITIONS, isTerminal, type Transition } from '../domain/lifecycle';
+import type { Transition } from '../domain/lifecycle';
 import { noopLogger, type Logger } from '../lib/logger';
 import { decodeCursor, encodeCursor } from './cursor';
 import {
@@ -21,16 +21,11 @@ import {
   type ListIndex,
   type NotificationItem,
 } from './item';
+import { buildTransitionUpdate, type TransitionOptions } from './transitionUpdate';
+
+export type { TransitionOptions } from './transitionUpdate';
 
 export type Page = { data: Notification[]; nextCursor: string | null };
-
-export type TransitionOptions = {
-  now: Date;
-  lastError?: string;
-  providerMessageId?: string;
-  /** Required for `claimed`: the claim also increments `attempts` and refuses once the cap is reached. */
-  maxAttempts?: number;
-};
 
 export type TransitionResult =
   { ok: true; notification: Notification } | { ok: false; reason: 'conflict' | 'not_found' };
@@ -63,48 +58,6 @@ const listIndex = (userId: string | undefined): ListQuery =>
         KeyConditionExpression: 'userId = :pk',
         ExpressionAttributeValues: { ':pk': userId },
       };
-
-/** Builds the UpdateItem pieces for a transition. Exported for the unit tests that assert the exact expressions. */
-export const buildTransitionUpdate = (transition: Transition, options: TransitionOptions) => {
-  const { from, to } = TRANSITIONS[transition];
-  const now = options.now.toISOString();
-  const names: Record<string, string> = { '#status': 'status' };
-  const values: Record<string, unknown> = { ':to': to, ':now': now };
-  const sets = ['#status = :to', 'updatedAt = :now'];
-  const conditions: string[] = [];
-
-  const fromKeys = from.map((status, i) => {
-    values[`:from${i}`] = status;
-    return `:from${i}`;
-  });
-  conditions.push(`#status IN (${fromKeys.join(', ')})`);
-
-  if (options.lastError !== undefined) {
-    values[':lastError'] = options.lastError;
-    sets.push('lastError = :lastError');
-  }
-  if (options.providerMessageId !== undefined) {
-    values[':providerMessageId'] = options.providerMessageId;
-    sets.push('providerMessageId = :providerMessageId');
-  }
-  if (isTerminal(to)) sets.push('completedAt = :now');
-
-  let add: string | undefined;
-  if (transition === 'claimed') {
-    if (options.maxAttempts === undefined) throw new Error('claimed requires maxAttempts');
-    values[':one'] = 1;
-    values[':max'] = options.maxAttempts;
-    conditions.push('attempts < :max');
-    add = 'ADD attempts :one';
-  }
-
-  return {
-    UpdateExpression: [`SET ${sets.join(', ')}`, add].filter(Boolean).join(' '),
-    ConditionExpression: conditions.join(' AND '),
-    ExpressionAttributeNames: names,
-    ExpressionAttributeValues: values,
-  };
-};
 
 export const createDynamoNotificationRepository = ({
   client,
