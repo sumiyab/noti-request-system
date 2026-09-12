@@ -288,6 +288,15 @@ What is currently running, and where:
   receives. `SIMULATED_FAILURE_RATE=0.2` so retries are visible.
 - **Logs** — CloudWatch `/aws/lambda/noti-request-system-dev-*`, 14-day retention. Structured JSON lines with
   `requestId` / `notificationId`; `aws logs tail <group> --follow` to watch a request go through.
+- **Tracing** — X-Ray active on every function, so one trace follows a request from the API Lambda through SQS
+  into the worker.
+- **Alarms** — SNS topic `noti-request-system-dev-alarms` with three CloudWatch alarms: DLQ not empty (any
+  message, 1 min), worker `Errors ≥ 1` (5 min), API `5xx ≥ 1` (5 min). Deploy with
+  `--param="alarmEmail=you@example.com"` to subscribe an address; without it the alarms still fire and show in
+  the console.
+- **Guard rails** — HTTP API stage throttle 10 req/s sustained, burst 20 (the API is unauthenticated, so this
+  is the only thing between it and a loop); worker reserved concurrency 5 (≤ 50 in-flight sends against the
+  provider); DynamoDB encrypted with a KMS key so every decrypt is in CloudTrail.
 
 The [request sequence](#request-sequence) diagram above is this exact deployment. Nothing in the frontend
 bundle or the Lambda code is environment-specific: the same handlers run against DynamoDB Local + ElasticMQ in
@@ -654,9 +663,27 @@ and a real deploy), and pixel-level UI.
 - **A crash between the DynamoDB write and the SQS send leaves a request stuck in `PENDING`.** The two writes
   are not atomic. The window is milliseconds and the state is visible (not silently lost), which is acceptable
   for this scope; the fix is a transactional outbox — see below.
-- **No authentication or rate limiting.** The API is open, so `userId` is whatever the caller claims. This is
-  a demonstration of the processing pipeline; a real deployment would put a JWT authorizer (Cognito) and WAF
-  rate rules in front of it and take `userId` from the token (see [Why `userId`](#why-userid)).
+- **No authentication — and therefore anyone can read anyone's notifications.** The API is open, so `userId`
+  is whatever the caller claims, and `GET /notifications?userId=X` returns X's history to any caller. In a
+  product this is an IDOR on private communications and would be the first thing to close: a JWT authorizer
+  (Cognito) makes `userId` come from the token, and the list endpoint scopes itself to the caller (see
+  [Why `userId`](#why-userid)). The stage throttle (10 req/s) limits abuse volume, not access.
+- **`POST /notifications` is not idempotent.** A client that times out and retries creates two requests, so
+  the recipient may get two messages. The standard fix is an `Idempotency-Key` header stored on the item with
+  a conditional `PutItem` (and a GSI or the key as part of the id), returning the original `202` on a replay.
+  Left out because the form disables its button while pending, but a broker sending OTPs or withdrawal
+  confirmations would want it.
+- **Only the latest status is kept.** Each transition overwrites `status`/`updatedAt`; there is no record that
+  a request was `QUEUED` at 14:01 and `PROCESSING` at 14:02. For an audit requirement ("prove the margin call
+  was sent and when") the transition history would go to an append-only log — a DynamoDB Streams consumer
+  writing `notification-events`, or a second item type in the same table.
+- **No retention policy.** Message bodies are PII and stay in the table forever. A regulated operator has a
+  rule both ways — retain communications for N years, then delete — which maps to a TTL attribute
+  (`expiresAt`) set on write and DynamoDB's TTL feature, plus PITR/backups for the retention side.
+- **No secrets today, so no secrets handling.** The simulated provider needs none. Real provider credentials
+  (SES SMTP, SNS, FCM server key) belong in SSM Parameter Store / Secrets Manager, read once at cold start
+  with the function's role granting `GetParameter` on that path only — never in `serverless.yml` environment
+  blocks, which end up in CloudFormation and the console.
 - **Retries use a fixed 60 s delay**, not exponential backoff. Three attempts a minute apart are enough to
   ride out a brief provider blip; longer outages end in `FAILED` and need a manual resubmit.
 - **The `byCreatedAt` index uses a single constant partition key.** That makes "newest first" trivial but
@@ -683,13 +710,17 @@ Roughly in the order they would be worth doing:
 2. **Transactional outbox** — write the request and an "outbox" record in one `TransactWriteItems`, and let a
    DynamoDB Streams-triggered Lambda do the SQS send. Removes the stuck-`PENDING` window entirely.
 3. **Authentication** — Cognito user pool + HTTP API JWT authorizer; `userId` moves from the body to the
-   token's `sub` claim and the list endpoint scopes itself to the caller via the existing `byUser` index.
-4. **Exponential backoff** — set `DelaySeconds` on redelivery based on `attempts` instead of relying on the
+   token's `sub` claim and the list endpoint scopes itself to the caller via the existing `byUser` index. This
+   closes the IDOR noted above and is the first item for any real deployment.
+4. **Idempotency key, transition history, retention** — the three fintech-grade gaps listed under trade-offs,
+   each a small, contained change to the item schema and one handler.
+5. **Exponential backoff** — set `DelaySeconds` on redelivery based on `attempts` instead of relying on the
    visibility timeout.
-5. **Operations** — CloudWatch alarms on DLQ depth and `FAILED` rate, structured log queries by `requestId`,
-   X-Ray tracing across API → SQS → worker, and a DLQ redrive runbook.
-6. **Live updates** — API Gateway WebSocket API or SSE from a DynamoDB Stream, replacing polling.
-7. **CI** — GitHub Actions running typecheck, lint, unit and integration tests (with the Docker emulators as
+6. **Operations, next step** — alarms and X-Ray exist (see [Live deployment](#live-deployment)); still to do:
+   an alarm on the `FAILED` rate (a custom metric emitted by the worker), a CloudWatch dashboard, a DLQ
+   redrive runbook, and a customer-managed KMS key with a documented key policy.
+7. **Live updates** — API Gateway WebSocket API or SSE from a DynamoDB Stream, replacing polling.
+8. **CI** — GitHub Actions running typecheck, lint, unit and integration tests (with the Docker emulators as
    services) on every PR, and `serverless deploy` on merge.
-8. **Product features** — templates with variables, scheduled sends, per-recipient status history, and
+9. **Product features** — templates with variables, scheduled sends, per-recipient status history, and
    cancelling a request while it is still `QUEUED` (one more guarded transition).

@@ -11,6 +11,10 @@ provider:
   memorySize: 256
   timeout: 10
   logRetentionInDays: 14
+  # X-Ray on every function: one trace follows a request API → SQS → worker. HTTP API v2 has no X-Ray
+  # integration of its own, so tracing starts at the Lambda.
+  tracing:
+    lambda: true
   environment:
     TABLE_NAME: !Ref NotificationRequestsTable
     LOG_LEVEL: info
@@ -83,6 +87,9 @@ functions:
 
   processNotifications:
     handler: src/handlers/queue/processNotifications/index.handler
+    # Caps how hard the worker can hit the provider: 5 × batch 10 = at most 50 in-flight sends. A burst
+    # queues in SQS instead of tripping SES/SNS rate limits and burning attempts.
+    reservedConcurrency: 5
     events:
       - sqs:
           arn: !GetAtt NotificationRequestsQueue.Arn
@@ -130,6 +137,9 @@ resources:
               - { AttributeName: createdAt, KeyType: RANGE }
             Projection: { ProjectionType: ALL }
         PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
+        # Message bodies are PII. KMS (AWS-managed key) puts every decrypt in CloudTrail; a customer-managed
+        # key is one more line here (KMSMasterKeyId) once the business owns key policy.
+        SSESpecification: { SSEEnabled: true, SSEType: KMS }
 
     NotificationRequestsDLQ:
       Type: AWS::SQS::Queue
@@ -148,12 +158,100 @@ resources:
           deadLetterTargetArn: !GetAtt NotificationRequestsDLQ.Arn
           maxReceiveCount: 5
 
+    # --- Operations: one topic, three alarms. Subscribe an address with --param="alarmEmail=…". ---
+    AlarmTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: noti-request-system-${sls:stage}-alarms
+
+    AlarmEmailSubscription:
+      Type: AWS::SNS::Subscription
+      Condition: HasAlarmEmail
+      Properties:
+        TopicArn: !Ref AlarmTopic
+        Protocol: email
+        Endpoint: ${param:alarmEmail, ''}
+
+    # A message in the DLQ means the worker crashed on it 5 times: someone has to look.
+    DlqNotEmptyAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmName: noti-request-system-${sls:stage}-dlq-not-empty
+        AlarmDescription: Messages are sitting in the notification dead-letter queue
+        Namespace: AWS/SQS
+        MetricName: ApproximateNumberOfMessagesVisible
+        Dimensions:
+          - { Name: QueueName, Value: !GetAtt NotificationRequestsDLQ.QueueName }
+        Statistic: Maximum
+        Period: 60
+        EvaluationPeriods: 1
+        Threshold: 0
+        ComparisonOperator: GreaterThanThreshold
+        TreatMissingData: notBreaching
+        AlarmActions: [!Ref AlarmTopic]
+        OKActions: [!Ref AlarmTopic]
+
+    # Unhandled worker errors (not business failures, which are recorded on the item and never throw).
+    WorkerErrorsAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmName: noti-request-system-${sls:stage}-worker-errors
+        AlarmDescription: processNotifications is throwing
+        Namespace: AWS/Lambda
+        MetricName: Errors
+        Dimensions:
+          - { Name: FunctionName, Value: !Ref ProcessNotificationsLambdaFunction }
+        Statistic: Sum
+        Period: 300
+        EvaluationPeriods: 1
+        Threshold: 1
+        ComparisonOperator: GreaterThanOrEqualToThreshold
+        TreatMissingData: notBreaching
+        AlarmActions: [!Ref AlarmTopic]
+        OKActions: [!Ref AlarmTopic]
+
+    # 5xx from the API: our INTERNAL_ERROR / ENQUEUE_FAILED responses or API Gateway itself.
+    ApiServerErrorsAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmName: noti-request-system-${sls:stage}-api-5xx
+        AlarmDescription: The notification API is returning 5xx
+        Namespace: AWS/ApiGateway
+        MetricName: 5xx
+        Dimensions:
+          - { Name: ApiId, Value: !Ref HttpApi }
+        Statistic: Sum
+        Period: 300
+        EvaluationPeriods: 1
+        Threshold: 1
+        ComparisonOperator: GreaterThanOrEqualToThreshold
+        TreatMissingData: notBreaching
+        AlarmActions: [!Ref AlarmTopic]
+        OKActions: [!Ref AlarmTopic]
+
+  Conditions:
+    HasAlarmEmail: !Not
+      - !Equals
+        - ${param:alarmEmail, ''}
+        - ''
+
+  # The framework owns the HTTP API stage; add a default throttle so an open, unauthenticated POST cannot
+  # be hammered. Per-route or per-client limits are an authorizer + usage-plan question, not this.
+  extensions:
+    HttpApiStage:
+      Properties:
+        DefaultRouteSettings:
+          ThrottlingBurstLimit: 20
+          ThrottlingRateLimit: 10
+
   Outputs:
     # HttpApiUrl is emitted by the framework itself.
     TableName:
       Value: !Ref NotificationRequestsTable
     QueueUrl:
       Value: !Ref NotificationRequestsQueue
+    AlarmTopicArn:
+      Value: !Ref AlarmTopic
 
 custom:
   tableDeletionPolicy:

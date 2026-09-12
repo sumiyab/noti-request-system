@@ -330,9 +330,26 @@ Notes:
 
 - API functions: cold start ≈ 200–400 ms (small bundle, clients created lazily on first use of the module).
   Warm: single-digit ms of handler overhead.
-- Worker: Lambda scales the SQS poller up to 1,000 concurrent invocations by default. The simulated provider
-  does not care, but a real one would; `scalingConfig: { maximumConcurrency: 10 }` on the event source is the
-  knob to cap it, and is left out until a provider with a rate limit exists.
+- Worker: `reservedConcurrency: 5` caps the SQS poller at five concurrent invocations — with batches of 10
+  that is at most 50 in-flight provider calls, well inside any SES/SNS sandbox limit. A burst simply waits in
+  SQS. Raise it with the provider's rate limit; `scalingConfig.maximumConcurrency` on the event source is the
+  finer-grained alternative when several event sources share one function.
+- Tracing: `provider.tracing.lambda: true` turns on X-Ray for every function (the framework adds the
+  `xray:PutTraceSegments` permission to each per-function role). HTTP API v2 does not emit its own segments,
+  so the trace begins at the API Lambda and continues through SQS into the worker.
+
+## Alarms and guard rails
+
+Declared in `serverless.yml` next to the queue and table, so a stage cannot exist without them:
+
+| Resource                 | What                                                                                   | Why                                                                                      |
+| ------------------------ | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `AlarmTopic`             | SNS topic; `--param="alarmEmail=…"` adds an email subscription (conditional)           | One place to hang pagers/chat integrations                                               |
+| `DlqNotEmptyAlarm`       | `ApproximateNumberOfMessagesVisible > 0` on the DLQ, 1-minute period                   | A poisoned message crashed the worker 5 times; nothing will retry it without a human     |
+| `WorkerErrorsAlarm`      | Lambda `Errors ≥ 1` in 5 minutes on `processNotifications`                             | Business failures never throw, so any error here is a bug or an AWS outage               |
+| `ApiServerErrorsAlarm`   | API Gateway `5xx ≥ 1` in 5 minutes                                                     | `ENQUEUE_FAILED` (SQS down) or an unhandled exception in an API Lambda                   |
+| `HttpApiStage` throttle  | `DefaultRouteSettings`: 10 requests/s sustained, burst 20 (via `resources.extensions`) | The API has no authorizer; this bounds what one loop can cost                            |
+| Table `SSESpecification` | `SSEType: KMS` (AWS-managed key)                                                       | Message bodies are PII; KMS puts every decrypt in CloudTrail. A CMK is one more property |
 
 ## Testing map
 
