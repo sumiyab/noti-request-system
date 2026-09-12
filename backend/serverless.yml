@@ -1,0 +1,145 @@
+# Notification Request System — backend
+# Four functions, one table, one queue (+ DLQ). See docs/lambda-function-design.md for the reasoning.
+service: noti-request-system
+frameworkVersion: '4'
+
+provider:
+  name: aws
+  runtime: nodejs22.x
+  region: ${opt:region, 'ap-northeast-1'}
+  stage: ${opt:stage, 'dev'}
+  memorySize: 256
+  timeout: 10
+  logRetentionInDays: 14
+  environment:
+    TABLE_NAME: !Ref NotificationRequestsTable
+    LOG_LEVEL: info
+  httpApi:
+    # CORS lives here, once. API Gateway answers preflights and stamps every response, including errors.
+    cors:
+      allowedOrigins:
+        - ${param:frontendOrigin, 'http://localhost:3000'}
+      allowedMethods: [GET, POST, OPTIONS]
+      allowedHeaders: [Content-Type]
+      exposedHeaders: [Location, X-Request-Id]
+      maxAge: 86400
+
+build:
+  esbuild:
+    bundle: true
+    minify: false
+    sourcemap: true
+    target: node22
+    format: esm
+    exclude: ['@aws-sdk/*'] # provided by the nodejs22.x runtime
+
+functions:
+  createNotification:
+    handler: src/handlers/http/createNotification.handler
+    events:
+      - httpApi: { method: POST, path: /notifications }
+    environment:
+      QUEUE_URL: !Ref NotificationRequestsQueue
+    iam:
+      role:
+        statements:
+          - Effect: Allow
+            Action: [dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:GetItem]
+            Resource: !GetAtt NotificationRequestsTable.Arn
+          - Effect: Allow
+            Action: [sqs:SendMessage]
+            Resource: !GetAtt NotificationRequestsQueue.Arn
+
+  listNotifications:
+    handler: src/handlers/http/listNotifications.handler
+    events:
+      - httpApi: { method: GET, path: /notifications }
+    iam:
+      role:
+        statements:
+          - Effect: Allow
+            Action: [dynamodb:Query]
+            Resource: !Sub '${NotificationRequestsTable.Arn}/index/byCreatedAt'
+
+  getNotification:
+    handler: src/handlers/http/getNotification.handler
+    events:
+      - httpApi: { method: GET, path: /notifications/{id} }
+    iam:
+      role:
+        statements:
+          - Effect: Allow
+            Action: [dynamodb:GetItem]
+            Resource: !GetAtt NotificationRequestsTable.Arn
+
+  processNotifications:
+    handler: src/handlers/queue/processNotifications.handler
+    events:
+      - sqs:
+          arn: !GetAtt NotificationRequestsQueue.Arn
+          batchSize: 10
+          maximumBatchingWindow: 0
+          functionResponseType: ReportBatchItemFailures
+    environment:
+      MAX_ATTEMPTS: '3'
+      SIMULATED_FAILURE_RATE: '0.2'
+    iam:
+      role:
+        statements:
+          - Effect: Allow
+            Action: [dynamodb:UpdateItem]
+            Resource: !GetAtt NotificationRequestsTable.Arn
+          - Effect: Allow
+            Action: [sqs:ReceiveMessage, sqs:DeleteMessage, sqs:GetQueueAttributes]
+            Resource: !GetAtt NotificationRequestsQueue.Arn
+
+resources:
+  Resources:
+    NotificationRequestsTable:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: ${self:custom.tableDeletionPolicy.${sls:stage}, 'Delete'}
+      Properties:
+        TableName: notification-requests-${sls:stage}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - { AttributeName: id, AttributeType: S }
+          - { AttributeName: entityType, AttributeType: S }
+          - { AttributeName: createdAt, AttributeType: S }
+        KeySchema:
+          - { AttributeName: id, KeyType: HASH }
+        GlobalSecondaryIndexes:
+          - IndexName: byCreatedAt
+            KeySchema:
+              - { AttributeName: entityType, KeyType: HASH }
+              - { AttributeName: createdAt, KeyType: RANGE }
+            Projection: { ProjectionType: ALL }
+        PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
+
+    NotificationRequestsDLQ:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: notification-requests-dlq-${sls:stage}
+        MessageRetentionPeriod: 1209600 # 14 days
+        SqsManagedSseEnabled: true
+
+    NotificationRequestsQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: notification-requests-${sls:stage}
+        VisibilityTimeout: 60 # ≥ 6× the worker timeout; also the retry delay
+        SqsManagedSseEnabled: true
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt NotificationRequestsDLQ.Arn
+          maxReceiveCount: 5
+
+  Outputs:
+    HttpApiUrl:
+      Value: !GetAtt HttpApi.ApiEndpoint
+    TableName:
+      Value: !Ref NotificationRequestsTable
+    QueueUrl:
+      Value: !Ref NotificationRequestsQueue
+
+custom:
+  tableDeletionPolicy:
+    prod: Retain

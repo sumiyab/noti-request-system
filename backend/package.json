@@ -2,11 +2,37 @@
   "name": "@noti/backend",
   "private": true,
   "version": "0.1.0",
-  "type": "module",
+  "description": "Serverless backend: API Gateway + Lambda + DynamoDB + SQS",
   "scripts": {
-    "test": "echo \"@noti/backend: no tests yet\"",
-    "typecheck": "echo \"@noti/backend: no sources yet\"",
-    "lint": "echo \"@noti/backend: no sources yet\"",
-    "lint:fix": "echo \"@noti/backend: no sources yet\""
+    "dev": "bun run local/setup.ts && bun --watch local/server.ts",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:integration": "jest --config jest.integration.config.mjs --runInBand",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "package": "serverless package",
+    "deploy": "serverless deploy",
+    "remove": "serverless remove",
+    "logs:worker": "serverless logs -f processNotifications --tail"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1131.0",
+    "@aws-sdk/client-sqs": "^3.1131.0",
+    "@aws-sdk/lib-dynamodb": "^3.1131.0",
+    "@noti/shared": "workspace:*",
+    "zod": "^4.6.2"
+  },
+  "devDependencies": {
+    "@swc/core": "^1.16.2",
+    "@swc/jest": "^0.2.39",
+    "@types/aws-lambda": "^8.10.163",
+    "@types/bun": "^1.3.12",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^22",
+    "aws-sdk-client-mock": "^4.1.0",
+    "aws-sdk-client-mock-jest": "^4.1.0",
+    "jest": "^30.5.1",
+    "serverless": "^4.42.0"
   }
 }

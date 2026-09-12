@@ -1,0 +1,7 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node", "jest", "bun", "aws-sdk-client-mock-jest"]
+  },
+  "include": ["src", "local", "tests"]
+}

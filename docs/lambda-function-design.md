@@ -269,21 +269,27 @@ functions:
     handler: src/handlers/http/createNotification.handler
     events: [{ httpApi: { method: POST, path: /notifications } }]
     environment: { QUEUE_URL: !Ref NotificationRequestsQueue }
-    iamRoleStatements:
-      - { Effect: Allow, Action: [dynamodb:PutItem, dynamodb:UpdateItem], Resource: !GetAtt NotificationRequestsTable.Arn }
-      - { Effect: Allow, Action: [sqs:SendMessage], Resource: !GetAtt NotificationRequestsQueue.Arn }
+    iam:
+      role:
+        statements:
+          - { Effect: Allow, Action: [dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:GetItem], Resource: !GetAtt NotificationRequestsTable.Arn }
+          - { Effect: Allow, Action: [sqs:SendMessage], Resource: !GetAtt NotificationRequestsQueue.Arn }
 
   listNotifications:
     handler: src/handlers/http/listNotifications.handler
     events: [{ httpApi: { method: GET, path: /notifications } }]
-    iamRoleStatements:
-      - { Effect: Allow, Action: [dynamodb:Query], Resource: !Sub '${NotificationRequestsTable.Arn}/index/byCreatedAt' }
+    iam:
+      role:
+        statements:
+          - { Effect: Allow, Action: [dynamodb:Query], Resource: !Sub '${NotificationRequestsTable.Arn}/index/byCreatedAt' }
 
   getNotification:
     handler: src/handlers/http/getNotification.handler
     events: [{ httpApi: { method: GET, path: /notifications/{id} } }]
-    iamRoleStatements:
-      - { Effect: Allow, Action: [dynamodb:GetItem], Resource: !GetAtt NotificationRequestsTable.Arn }
+    iam:
+      role:
+        statements:
+          - { Effect: Allow, Action: [dynamodb:GetItem], Resource: !GetAtt NotificationRequestsTable.Arn }
 
   processNotifications:
     handler: src/handlers/queue/processNotifications.handler
@@ -294,9 +300,11 @@ functions:
           maximumBatchingWindow: 0
           functionResponseType: ReportBatchItemFailures
     environment: { MAX_ATTEMPTS: '3', SIMULATED_FAILURE_RATE: '0.2' }
-    iamRoleStatements:
-      - { Effect: Allow, Action: [dynamodb:UpdateItem], Resource: !GetAtt NotificationRequestsTable.Arn }
-      - { Effect: Allow, Action: [sqs:ReceiveMessage, sqs:DeleteMessage, sqs:GetQueueAttributes], Resource: !GetAtt NotificationRequestsQueue.Arn }
+    iam:
+      role:
+        statements:
+          - { Effect: Allow, Action: [dynamodb:UpdateItem], Resource: !GetAtt NotificationRequestsTable.Arn }
+          - { Effect: Allow, Action: [sqs:ReceiveMessage, sqs:DeleteMessage, sqs:GetQueueAttributes], Resource: !GetAtt NotificationRequestsQueue.Arn }
 ```
 
 Notes:
@@ -304,8 +312,9 @@ Notes:
 - **Bundling.** Serverless v4 bundles with esbuild out of the box — one small ESM bundle per function, tree-shaken
   to what that handler imports. `@aws-sdk/*` is excluded because the Node 22 runtime ships it; that keeps
   bundles under ~100 KB and cold starts short.
-- **Per-function IAM** uses the `serverless-iam-roles-per-function` convention (`iamRoleStatements` under each
-  function). The read handlers physically cannot write; the worker cannot enqueue.
+- **Per-function IAM** is native in Serverless v4 (`iam.role.statements` under each function; the old
+  `serverless-iam-roles-per-function` plugin is no longer needed). The read handlers physically cannot write;
+  the worker cannot enqueue.
 - **Resources** (table, queues) are in the DynamoDB and SQS design docs and live in the same file under
   `resources:`.
 

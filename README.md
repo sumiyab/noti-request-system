@@ -186,10 +186,15 @@ bun install              # from the repo root; installs every workspace
 ### Run locally (no AWS account needed)
 
 ```bash
-docker compose up -d     # DynamoDB Local on :8000, ElasticMQ (SQS) on :9324
+cp backend/.env.example backend/.env.local   # emulator endpoints and dummy AWS credentials
+cp frontend/.env.example frontend/.env.local # NEXT_PUBLIC_API_URL=http://localhost:3001
+docker compose up -d     # DynamoDB Local on :8000, ElasticMQ (SQS) on :9324 (UI on :9325)
 bun run dev:backend      # API on http://localhost:3001 + SQS worker; creates the table on first start
 bun run dev:frontend     # app on http://localhost:3000
 ```
+
+> Port taken? `DYNAMODB_PORT=8001 docker compose up -d` and set `AWS_ENDPOINT_URL_DYNAMODB=http://localhost:8001`
+> in `backend/.env.local` (`SQS_PORT` likewise).
 
 ```mermaid
 flowchart LR

@@ -44,8 +44,11 @@ backend/
 │   ├── providers/                  notificationProvider.ts · simulatedProvider.ts
 │   └── lib/                        config.ts · errors.ts · http.ts · logger.ts
 ├── local/
-│   ├── server.ts                   Bun: HTTP server (+ CORS) → handlers; SQS poller → worker handler
-│   ├── setup.ts                    CreateTable on DynamoDB Local if missing
+│   ├── server.ts                   Bun entry: starts the HTTP server and the SQS poller
+│   ├── http.ts                     CORS preflight + route → the same Lambda handlers
+│   ├── poller.ts                   long-poll ElasticMQ → worker handler, delete non-failed records
+│   ├── table.ts                    table definition + ensureTable() (also used by the integration harness)
+│   ├── setup.ts                    CLI: create the table in DynamoDB Local if missing
 │   └── elasticmq.conf              main queue + DLQ, visibility timeout, redrive policy
 └── tests/
     ├── helpers/
@@ -61,7 +64,8 @@ backend/
     │   ├── providers/simulatedProvider.test.ts
     │   └── lib/*.test.ts
     └── integration/
-        ├── setup.ts                creates table + purges queues before each file
+        ├── env.ts                  emulator endpoints (Jest does not read .env files)
+        ├── harness.ts              real handlers + SDK clients; recreates the table and purges the queue per file
         ├── createAndProcess.test.ts
         ├── pagination.test.ts
         └── retries.test.ts
@@ -173,14 +177,14 @@ import base from './jest.config.mjs';
 export default {
   ...base,
   roots: ['<rootDir>/tests/integration'],
-  globalSetup: '<rootDir>/tests/integration/setup.ts',
+  setupFiles: ['<rootDir>/tests/integration/env.ts'],
   testTimeout: 30_000,
   coverageThreshold: undefined,
 };
 ```
 
 Run with `--runInBand`: the tests share one DynamoDB Local table and one ElasticMQ queue, so they must not
-interleave. `setup.ts` reads `.env.local`, creates the table if missing, and purges both queues.
+interleave. `env.ts` sets the emulator endpoints; `harness.ts` recreates the table and purges the queue per file.
 
 ### `serverless.yml` skeleton
 

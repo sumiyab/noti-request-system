@@ -1,16 +1,17 @@
 # Local emulators for the backend. Nothing here is used in AWS.
 #   docker compose up -d
+# Override a host port if it is taken: DYNAMODB_PORT=8001 docker compose up -d (and adjust AWS_ENDPOINT_URL_DYNAMODB).
 services:
   dynamodb:
     image: amazon/dynamodb-local:latest
     command: ['-jar', 'DynamoDBLocal.jar', '-sharedDb', '-inMemory']
     ports:
-      - '8000:8000'
+      - '${DYNAMODB_PORT:-8000}:8000'
 
   elasticmq:
     image: softwaremill/elasticmq-native:latest
     ports:
-      - '9324:9324' # SQS-compatible API
-      - '9325:9325' # web UI
+      - '${SQS_PORT:-9324}:9324' # SQS-compatible API
+      - '${SQS_UI_PORT:-9325}:9325' # web UI
     volumes:
       - ./backend/local/elasticmq.conf:/opt/elasticmq.conf:ro
