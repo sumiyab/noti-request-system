@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { API_ERROR_CODES, CHANNELS, LIMITS, LIST_LIMIT, STATUSES } from './constants';
+import { API_ERROR_CODES, CHANNELS, LIMITS, LIST_LIMIT, STATUSES, USER_ID } from './constants';
 
 // ---------------------------------------------------------------------------
 // Input: what a client sends to POST /notifications
@@ -10,6 +10,23 @@ const E164 = /^\+[1-9]\d{1,14}$/;
 
 /** Device tokens as issued by APNs / FCM: no whitespace, a limited character set. */
 const DEVICE_TOKEN = /^[A-Za-z0-9:._-]+$/;
+
+/**
+ * User ids: what identity providers issue (UUIDs, `auth0|…`, emails, usernames) — no whitespace. `*` rather
+ * than `+` so an empty id reports only "required", not a second charset issue.
+ */
+const USER_ID_PATTERN = /^[A-Za-z0-9@._|:-]*$/;
+
+/**
+ * Who is sending the notification. Without an authorizer in front of the API it is a body field; with one
+ * it would be taken from the JWT `sub` claim instead and this schema would drop it from the body.
+ */
+export const userIdSchema = z
+  .string()
+  .trim()
+  .min(USER_ID.min, 'User ID is required')
+  .max(USER_ID.max, `User ID must be ${USER_ID.max} characters or fewer`)
+  .regex(USER_ID_PATTERN, 'User ID may only contain letters, digits, and @ . _ | : -');
 
 const message = (max: number) =>
   z.string().trim().min(1, 'Message is required').max(max, `Message must be ${max} characters or fewer`);
@@ -22,10 +39,11 @@ const subject = (max: number) =>
  *  - EMAIL: subject required
  *  - SMS:   no subject at all (a strict object rejects it as an unknown key)
  *  - PUSH:  subject required (it is the push title)
- * Strict objects reject unknown keys, so a typo like `reciepient` fails loudly.
+ * Every channel carries `userId`. Strict objects reject unknown keys, so a typo like `reciepient` fails loudly.
  */
 export const createNotificationSchema = z.discriminatedUnion('channel', [
   z.strictObject({
+    userId: userIdSchema,
     channel: z.literal('EMAIL'),
     recipient: z
       .string()
@@ -36,11 +54,13 @@ export const createNotificationSchema = z.discriminatedUnion('channel', [
     message: message(LIMITS.EMAIL.message),
   }),
   z.strictObject({
+    userId: userIdSchema,
     channel: z.literal('SMS'),
     recipient: z.string().trim().regex(E164, 'Enter a phone number in E.164 format, e.g. +97699112233'),
     message: message(LIMITS.SMS.message),
   }),
   z.strictObject({
+    userId: userIdSchema,
     channel: z.literal('PUSH'),
     recipient: z
       .string()
@@ -61,6 +81,8 @@ export const notificationIdSchema = z.uuid('id must be a UUID');
 
 export const listNotificationsQuerySchema = z.strictObject({
   limit: z.coerce.number().int().min(LIST_LIMIT.min).max(LIST_LIMIT.max).default(LIST_LIMIT.default),
+  /** Only this user's requests (served by the `byUser` index); omit for every request. */
+  userId: userIdSchema.optional(),
   /** Opaque; produced by the previous page's `nextCursor`. Decoded and validated by the repository. */
   cursor: z.string().min(1).optional(),
 });
@@ -74,6 +96,7 @@ export const statusSchema = z.enum(STATUSES);
 
 export const notificationSchema = z.object({
   id: z.uuid(),
+  userId: z.string(),
   channel: channelSchema,
   recipient: z.string(),
   /** Absent for SMS. */

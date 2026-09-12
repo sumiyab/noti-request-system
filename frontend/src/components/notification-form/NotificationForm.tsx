@@ -11,13 +11,26 @@ import { createNotificationSchema, type CreateNotificationInput } from '@/schema
 import { MessageFields } from './MessageFields';
 import { RecipientField } from './RecipientField';
 import type { NotificationFormValues } from './types';
+import { UserIdField } from './UserIdField';
 
 /** The form submits email requests; the API and the list support SMS and PUSH as well. */
 const CHANNEL = 'EMAIL';
 
-const DEFAULTS: NotificationFormValues = { channel: CHANNEL, recipient: '', subject: '', message: '' };
+const DEFAULTS: NotificationFormValues = {
+  userId: '',
+  channel: CHANNEL,
+  recipient: '',
+  subject: '',
+  message: '',
+};
 
-const FORM_FIELDS = new Set<keyof NotificationFormValues>(['channel', 'recipient', 'subject', 'message']);
+const FORM_FIELDS = new Set<keyof NotificationFormValues>([
+  'userId',
+  'channel',
+  'recipient',
+  'subject',
+  'message',
+]);
 
 const isFormField = (path: string): path is keyof NotificationFormValues =>
   FORM_FIELDS.has(path as keyof NotificationFormValues);
@@ -36,7 +49,8 @@ export const NotificationForm = () => {
   const onSubmit = form.handleSubmit((values) =>
     create.mutate(values, {
       onSuccess: () => {
-        form.reset(DEFAULTS);
+        // The same user usually sends several requests, so only the message-specific fields clear.
+        form.reset({ ...DEFAULTS, userId: values.userId });
         toast.success('Request accepted', { description: 'It has been queued for delivery.' });
       },
       onError: (error) => {
@@ -54,12 +68,13 @@ export const NotificationForm = () => {
     <Card>
       <CardHeader>
         <CardTitle>New request</CardTitle>
-        <CardDescription>Fill in the recipient, subject, and message.</CardDescription>
+        <CardDescription>Fill in who is sending, the recipient, subject, and message.</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={(event) => void onSubmit(event)} noValidate aria-busy={pending}>
           <FieldGroup>
             <input type="hidden" {...form.register('channel')} />
+            <UserIdField {...fieldProps} disabled={pending} />
             <RecipientField {...fieldProps} channel={CHANNEL} disabled={pending} />
             <MessageFields {...fieldProps} channel={CHANNEL} disabled={pending} />
             <FieldError errors={[form.formState.errors.root?.server]} />

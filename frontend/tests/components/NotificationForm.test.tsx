@@ -18,7 +18,8 @@ describe('NotificationForm', () => {
     await fill(user, { 'Email address': 'jane@', Subject: 'Hi', Message: 'Hello' });
     await user.click(screen.getByRole('button', { name: 'Send notification' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Enter a valid email address');
+    const alerts = await screen.findAllByRole('alert');
+    expect(alerts.map((a) => a.textContent)).toEqual(['User ID is required', 'Enter a valid email address']);
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
@@ -28,12 +29,23 @@ describe('NotificationForm', () => {
     mockList([]);
     renderWithQuery(<NotificationForm />);
 
-    await fill(user, { 'Email address': 'jane@example.com', Subject: 'Welcome!', Message: 'Hello' });
+    await fill(user, {
+      'User ID': 'user-42',
+      'Email address': 'jane@example.com',
+      Subject: 'Welcome!',
+      Message: 'Hello',
+    });
     await user.click(screen.getByRole('button', { name: 'Send notification' }));
 
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
     const body = JSON.parse(lastRequest().init?.body as string) as Record<string, unknown>;
-    expect(body).toEqual({ channel: 'EMAIL', recipient: 'jane@example.com', subject: 'Welcome!', message: 'Hello' });
+    expect(body).toEqual({
+      userId: 'user-42',
+      channel: 'EMAIL',
+      recipient: 'jane@example.com',
+      subject: 'Welcome!',
+      message: 'Hello',
+    });
   });
 
   test('maps a server VALIDATION_ERROR onto the right field', async () => {
@@ -48,24 +60,35 @@ describe('NotificationForm', () => {
     });
     renderWithQuery(<NotificationForm />);
 
-    await fill(user, { 'Email address': 'jane@example.com', Subject: 'Hi', Message: 'Hello' });
+    await fill(user, {
+      'User ID': 'user-42',
+      'Email address': 'jane@example.com',
+      Subject: 'Hi',
+      Message: 'Hello',
+    });
     await user.click(screen.getByRole('button', { name: 'Send notification' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Subject rejected by server');
     expect(screen.getByLabelText('Subject')).toHaveAttribute('aria-invalid', 'true');
   });
 
-  test('resets the fields after a successful submit', async () => {
+  test('resets the message fields after a successful submit but keeps the user id', async () => {
     const user = userEvent.setup();
     mockResponse(202, { data: notification() });
     mockList([notification()]);
     renderWithQuery(<NotificationForm />);
 
-    await fill(user, { 'Email address': 'jane@example.com', Subject: 'Welcome!', Message: 'Thanks' });
+    await fill(user, {
+      'User ID': 'user-42',
+      'Email address': 'jane@example.com',
+      Subject: 'Welcome!',
+      Message: 'Thanks',
+    });
     await user.click(screen.getByRole('button', { name: 'Send notification' }));
 
     await waitFor(() => expect(screen.getByLabelText('Email address')).toHaveValue(''));
     expect(screen.getByLabelText('Message')).toHaveValue('');
+    expect(screen.getByLabelText('User ID')).toHaveValue('user-42');
     expect(screen.getByRole('button', { name: 'Send notification' })).toBeEnabled();
   });
 });

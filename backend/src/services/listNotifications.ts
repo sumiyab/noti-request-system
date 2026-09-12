@@ -4,4 +4,4 @@ import type { Deps } from '../deps';
 export const listNotifications = (
   deps: Pick<Deps, 'repo'>,
   query: ListNotificationsQuery,
-): Promise<ListNotificationsResponse> => deps.repo.list(query.limit, query.cursor);
+): Promise<ListNotificationsResponse> => deps.repo.list(query);

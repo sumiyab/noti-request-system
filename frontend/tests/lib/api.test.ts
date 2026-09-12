@@ -7,6 +7,7 @@ describe('api client', () => {
     mockResponse(202, { data: created });
 
     const result = await api.create({
+      userId: 'user-42',
       channel: 'EMAIL',
       recipient: 'jane@example.com',
       subject: 'Hi',
@@ -19,6 +20,7 @@ describe('api client', () => {
     expect(init?.method).toBe('POST');
     expect(init?.headers).toMatchObject({ 'content-type': 'application/json' });
     expect(JSON.parse(init?.body as string)).toEqual({
+      userId: 'user-42',
       channel: 'EMAIL',
       recipient: 'jane@example.com',
       subject: 'Hi',

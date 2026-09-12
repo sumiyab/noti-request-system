@@ -1,7 +1,8 @@
 # DynamoDB table design — `notification-requests`
 
-One table, one item per notification request, one global secondary index for listing. Everything the
-API and the worker do is either a key lookup on the table or a single query on the index.
+One table, one item per notification request, two global secondary indexes for listing (every request, and
+one user's). Everything the API and the worker do is either a key lookup on the table or a single query on an
+index.
 
 ## Access patterns
 
@@ -12,7 +13,8 @@ Design starts from the queries, not from the data:
 | 1   | Create a request                       | `createNotification` | `PutItem` (condition: `id` does not exist)                                       |
 | 2   | Fetch one request by id                | `getNotification`    | `GetItem` on the table                                                           |
 | 3   | List requests, newest first, paginated | `listNotifications`  | `Query` on `byCreatedAt`, `ScanIndexForward=false`, `Limit`, `ExclusiveStartKey` |
-| 4   | Move a request to its next status      | API and worker       | `UpdateItem` with a `ConditionExpression` on the current `status`                |
+| 4   | List one user's requests, newest first | `listNotifications`  | `Query` on `byUser`, same shape as #3                                            |
+| 5   | Move a request to its next status      | API and worker       | `UpdateItem` with a `ConditionExpression` on the current `status`                |
 
 There is no "find by recipient", "find by status", or "delete" — so there are no indexes for them.
 
@@ -29,6 +31,7 @@ DynamoDB has no schema except its keys, so the keys _are_ the data model. Two ru
 | --------------------- | -------------------------------------- | ---------------------- | -------------------------------------------------------------------- |
 | **Table**             | `id` — UUID v4                         | none (simple key)      | `GetItem` by id; `PutItem` on create; every conditional `UpdateItem` |
 | **GSI `byCreatedAt`** | `entityType` — always `"NOTIFICATION"` | `createdAt` — ISO 8601 | `Query` newest first, paginated                                      |
+| **GSI `byUser`**      | `userId` — the requesting user         | `createdAt` — ISO 8601 | `Query` one user's requests newest first, paginated                  |
 
 ```
 Table (PK = id)                        GSI byCreatedAt (PK = entityType, SK = createdAt)
@@ -50,9 +53,11 @@ Table (PK = id)                        GSI byCreatedAt (PK = entityType, SK = cr
   hot index partition — is discussed under the index section.
 - **Index sort key is an ISO string** because a fixed-width `YYYY-MM-DDTHH:mm:ss.sssZ` sorts lexically and
   chronologically at once; `ScanIndexForward = false` yields newest first.
+- **`userId` is the natural partition key for "my requests".** A real product's identity system spreads users
+  evenly, and one user's history is exactly one partition sorted by time — the textbook GSI shape.
 - **`status`, `channel`, `recipient`, `attempts`, … are not keys.** DynamoDB never indexes them; they matter
   only inside `ConditionExpression` / `UpdateExpression`. `AttributeDefinitions` therefore lists only `id`,
-  `entityType`, `createdAt` — declaring a non-key attribute there is an error.
+  `entityType`, `createdAt`, `userId` — declaring a non-key attribute there is an error.
 
 ## Table
 
@@ -71,7 +76,8 @@ Table (PK = id)                        GSI byCreatedAt (PK = entityType, SK = cr
 {
   "id": "3f0c9a52-8f6e-4d63-9a51-3c1e0f2b7d10", // PK
   "entityType": "NOTIFICATION", // GSI PK — constant, see below
-  "createdAt": "2026-09-12T04:00:00.000Z", // GSI SK — ISO 8601, sorts lexically = chronologically
+  "createdAt": "2026-09-12T04:00:00.000Z", // GSI SK (both indexes) — ISO 8601, sorts lexically = chronologically
+  "userId": "user-42", // byUser GSI PK — who sent it; the JWT `sub` once an authorizer exists
 
   "channel": "EMAIL",
   "recipient": "jane@example.com",
@@ -116,13 +122,28 @@ it is fine at ten items and unusable at ten thousand.
 **Why not a `status` index.** The UI shows every request, not "only failed ones", and the worker locates items
 by id from the SQS message — nobody queries by status.
 
+## Global secondary index `byUser`
+
+| Setting       | Value                |
+| ------------- | -------------------- |
+| Partition key | `userId` (String)    |
+| Sort key      | `createdAt` (String) |
+| Projection    | `ALL`                |
+
+`GET /notifications?userId=…` is `Query(userId = :userId)`, descending by `createdAt` — the same code path as
+the global list with a different index and key condition. In a real product this is the query that matters:
+a signed-in user sees their own history, and their partition key comes from the token, not the query string.
+Unlike `byCreatedAt` there is no hot partition — users are spread by their ids.
+
 ### Pagination cursor
 
-`Query` returns `LastEvaluatedKey` — for this index it is `{ id, entityType, createdAt }`. The repository
-base64url-encodes that JSON as `nextCursor`; the next request sends it back and the repository decodes it into
-`ExclusiveStartKey`. The cursor is validated on decode (a zod schema for the three keys) so a malformed or
-hand-edited cursor becomes a `400 VALIDATION_ERROR` on `cursor`, not a DynamoDB exception. Clients never need
-to know what is inside.
+`Query` returns `LastEvaluatedKey` — `{ id, entityType, createdAt }` for `byCreatedAt`, `{ id, userId,
+createdAt }` for `byUser`. The repository base64url-encodes that JSON as `nextCursor`; the next request sends
+it back and the repository decodes it into `ExclusiveStartKey`. The cursor is validated on decode (a zod
+union of the two key shapes) so a malformed or hand-edited cursor becomes a `400 VALIDATION_ERROR` on
+`cursor`, not a DynamoDB exception. The decoder also checks that the cursor belongs to the query being
+continued — a `byCreatedAt` cursor on a `?userId=` request, or a cursor for a different `userId`, is rejected
+the same way. Clients never need to know what is inside.
 
 ## Writes and conditions
 
@@ -164,12 +185,18 @@ resources:
           - { AttributeName: id, AttributeType: S }
           - { AttributeName: entityType, AttributeType: S }
           - { AttributeName: createdAt, AttributeType: S }
+          - { AttributeName: userId, AttributeType: S }
         KeySchema:
           - { AttributeName: id, KeyType: HASH }
         GlobalSecondaryIndexes:
           - IndexName: byCreatedAt
             KeySchema:
               - { AttributeName: entityType, KeyType: HASH }
+              - { AttributeName: createdAt, KeyType: RANGE }
+            Projection: { ProjectionType: ALL }
+          - IndexName: byUser
+            KeySchema:
+              - { AttributeName: userId, KeyType: HASH }
               - { AttributeName: createdAt, KeyType: RANGE }
             Projection: { ProjectionType: ALL }
         PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
@@ -183,12 +210,12 @@ Only key attributes appear in `AttributeDefinitions` — DynamoDB is schemaless 
 
 Per-function IAM follows the access patterns exactly:
 
-| Function               | Actions                                   | Resource                   |
-| ---------------------- | ----------------------------------------- | -------------------------- |
-| `createNotification`   | `dynamodb:PutItem`, `dynamodb:UpdateItem` | table                      |
-| `listNotifications`    | `dynamodb:Query`                          | table `/index/byCreatedAt` |
-| `getNotification`      | `dynamodb:GetItem`                        | table                      |
-| `processNotifications` | `dynamodb:GetItem`, `dynamodb:UpdateItem` | table                      |
+| Function               | Actions                                   | Resource                                    |
+| ---------------------- | ----------------------------------------- | ------------------------------------------- |
+| `createNotification`   | `dynamodb:PutItem`, `dynamodb:UpdateItem` | table                                       |
+| `listNotifications`    | `dynamodb:Query`                          | table `/index/byCreatedAt`, `/index/byUser` |
+| `getNotification`      | `dynamodb:GetItem`                        | table                                       |
+| `processNotifications` | `dynamodb:GetItem`, `dynamodb:UpdateItem` | table                                       |
 
 ## Local development
 

@@ -24,8 +24,10 @@ export class FakeRepository implements NotificationRepository {
 
   get: NotificationRepository['get'] = async (id) => this.items.get(id) ?? null;
 
-  list: NotificationRepository['list'] = async (limit, cursor) => {
-    const all = [...this.items.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  list: NotificationRepository['list'] = async ({ limit, cursor, userId }) => {
+    const all = [...this.items.values()]
+      .filter((n) => userId === undefined || n.userId === userId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     const start = cursor ? Number(cursor) : 0;
     const data = all.slice(start, start + limit);
     return { data, nextCursor: start + limit < all.length ? String(start + limit) : null };

@@ -1,4 +1,4 @@
-import type { Notification } from '@noti/shared';
+import type { ListNotificationsQuery, Notification } from '@noti/shared';
 import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
 import {
   GetCommand,
@@ -9,7 +9,7 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { TRANSITIONS, isTerminal, type Transition } from '../domain/lifecycle';
 import { decodeCursor, encodeCursor } from './cursor';
-import { ENTITY_TYPE, INDEX_BY_CREATED_AT, fromItem, keyOf, toItem } from './item';
+import { ENTITY_TYPE, INDEX_BY_CREATED_AT, INDEX_BY_USER, fromItem, keyOf, toItem } from './item';
 
 export type Page = { data: Notification[]; nextCursor: string | null };
 
@@ -27,7 +27,8 @@ export type TransitionResult =
 export interface NotificationRepository {
   create(notification: Notification): Promise<void>;
   get(id: string): Promise<Notification | null>;
-  list(limit: number, cursor?: string): Promise<Page>;
+  /** Newest first; every request, or one user's when `userId` is given. */
+  list(query: ListNotificationsQuery): Promise<Page>;
   transition(id: string, transition: Transition, options: TransitionOptions): Promise<TransitionResult>;
 }
 
@@ -93,22 +94,30 @@ export const createDynamoNotificationRepository = ({ client, tableName }: Deps):
     return Item ? fromItem(Item) : null;
   },
 
-  list: async (limit, cursor) => {
+  list: async ({ limit, cursor, userId }) => {
+    const index = userId === undefined ? INDEX_BY_CREATED_AT : INDEX_BY_USER;
     // Ask for one extra item: its presence is the only reliable "there is a next page" signal.
     const { Items = [] } = await client.send(
       new QueryCommand({
         TableName: tableName,
-        IndexName: INDEX_BY_CREATED_AT,
-        KeyConditionExpression: 'entityType = :entityType',
-        ExpressionAttributeValues: { ':entityType': ENTITY_TYPE },
+        IndexName: index,
+        ...(userId === undefined
+          ? {
+              KeyConditionExpression: 'entityType = :entityType',
+              ExpressionAttributeValues: { ':entityType': ENTITY_TYPE },
+            }
+          : {
+              KeyConditionExpression: 'userId = :userId',
+              ExpressionAttributeValues: { ':userId': userId },
+            }),
         ScanIndexForward: false,
         Limit: limit + 1,
-        ...(cursor && { ExclusiveStartKey: decodeCursor(cursor) }),
+        ...(cursor && { ExclusiveStartKey: decodeCursor(cursor, { userId }) }),
       }),
     );
     const page = Items.slice(0, limit).map(fromItem);
     const last = page[page.length - 1];
-    const nextCursor = Items.length > limit && last ? encodeCursor(keyOf(last)) : null;
+    const nextCursor = Items.length > limit && last ? encodeCursor(keyOf(last, index)) : null;
     return { data: page, nextCursor };
   },
 

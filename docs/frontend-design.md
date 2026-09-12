@@ -45,6 +45,7 @@ frontend/
     ├── components/
     │   ├── notification-form/
     │   │   ├── NotificationForm.tsx     useForm + zodResolver, submit, server errors → setError (channel fixed to EMAIL)
+    │   │   ├── UserIdField.tsx          who is sending; kept across submissions (stand-in for a signed-in user)
     │   │   ├── RecipientField.tsx       label, hint and input type per channel
     │   │   └── MessageFields.tsx        subject (unmounted for SMS) + message with counter
     │   ├── notification-list/
@@ -103,14 +104,15 @@ flowchart LR
 
 ## Components — responsibilities
 
-| Component                          | Owns                                                                                                                                                                                     | Does not                                               |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `NotificationForm`                 | `useForm({ resolver: zodResolver(createNotificationSchema) })`, `handleSubmit → mutate`, server `details[]` → `setError`, `isSubmitting`/`isPending` on the button, `reset()` on success | render the fields' markup (delegated), talk to `fetch` |
-| `RecipientField` / `MessageFields` | markup via shadcn `Field*`, per-channel labels/hints/limits, character counters from `useWatch()`                                                                                        | hold state (they receive `control` / `register`)       |
-| `NotificationList`                 | loading / empty / error states, mapping pages to rows, the load-more button                                                                                                              | polling logic (in the hook)                            |
-| `NotificationRow`                  | one item's layout: channel icon, recipient, subject/message preview, `StatusBadge`, attempts, `lastError`, relative time                                                                 | fetching                                               |
-| `StatusBadge`                      | colour + text per status; `role="status"` so screen readers announce changes                                                                                                             | anything else                                          |
-| shadcn `Field*`                    | label, control slot, description, `FieldError` (`role="alert"`) — generated once, reused by every field; inputs get `aria-invalid` from RHF's `errors`                                   | validation                                             |
+| Component                          | Owns                                                                                                                                                                                                        | Does not                                               |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `NotificationForm`                 | `useForm({ resolver: zodResolver(createNotificationSchema) })`, `handleSubmit → mutate`, server `details[]` → `setError`, `isSubmitting`/`isPending` on the button, `reset()` on success (keeping `userId`) | render the fields' markup (delegated), talk to `fetch` |
+| `UserIdField`                      | the sender's id; the demo's stand-in for a signed-in user — with an authorizer the field goes away and the token supplies it                                                                                | hold state                                             |
+| `RecipientField` / `MessageFields` | markup via shadcn `Field*`, per-channel labels/hints/limits, character counters from `useWatch()`                                                                                                           | hold state (they receive `control` / `register`)       |
+| `NotificationList`                 | loading / empty / error states, mapping pages to rows, the load-more button                                                                                                                                 | polling logic (in the hook)                            |
+| `NotificationRow`                  | one item's layout: channel icon, recipient, sender (`userId`), subject/message preview, `StatusBadge`, attempts, `lastError`, relative time                                                                 | fetching                                               |
+| `StatusBadge`                      | colour + text per status; `role="status"` so screen readers announce changes                                                                                                                                | anything else                                          |
+| shadcn `Field*`                    | label, control slot, description, `FieldError` (`role="alert"`) — generated once, reused by every field; inputs get `aria-invalid` from RHF's `errors`                                                      | validation                                             |
 
 Accessibility baseline: every input has a label, errors are linked via `aria-describedby`, the status badge is
 a live region, and the submit button is disabled (not hidden) while pending.
@@ -120,7 +122,7 @@ a live region, and the submit button is disabled (not hidden) while pending.
 ```tsx
 const form = useForm<CreateNotificationInput>({
   resolver: zodResolver(createNotificationSchema),
-  defaultValues: { channel: 'EMAIL', recipient: '', subject: '', message: '' },
+  defaultValues: { userId: '', channel: 'EMAIL', recipient: '', subject: '', message: '' },
   mode: 'onBlur',
 });
 const create = useCreateNotification();

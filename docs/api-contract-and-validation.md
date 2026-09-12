@@ -34,27 +34,34 @@ document is the _rules behind them_: how every request and response is shaped, w
 
 ### `POST /notifications`
 
-Headers: `content-type: application/json`. Body: one of three shapes selected by `channel`.
+Headers: `content-type: application/json`. Body: one of three shapes selected by `channel`; every shape
+carries `userId`.
 
 ```jsonc
 // EMAIL
-{ "channel": "EMAIL", "recipient": "jane@example.com", "subject": "Welcome!", "message": "…" }
+{ "userId": "user-42", "channel": "EMAIL", "recipient": "jane@example.com", "subject": "Welcome!", "message": "…" }
 // SMS  — no subject field at all
-{ "channel": "SMS",   "recipient": "+97699112233",                            "message": "…" }
+{ "userId": "user-42", "channel": "SMS",   "recipient": "+97699112233",                            "message": "…" }
 // PUSH — subject is the push title
-{ "channel": "PUSH",  "recipient": "fcm-token-abc123:def", "subject": "Title", "message": "…" }
+{ "userId": "user-42", "channel": "PUSH",  "recipient": "fcm-token-abc123:def", "subject": "Title", "message": "…" }
 ```
 
-| Field       | EMAIL                | SMS                         | PUSH                                 |
-| ----------- | -------------------- | --------------------------- | ------------------------------------ |
-| `recipient` | email address, ≤ 254 | E.164 (`^\+[1-9]\d{1,14}$`) | 8–512 chars of `A–Z a–z 0–9 : . _ -` |
-| `subject`   | required, 1–150      | **must be absent**          | required, 1–100                      |
-| `message`   | 1–5,000              | 1–1,600                     | 1–1,000                              |
+| Field       | EMAIL                                                   | SMS                         | PUSH                                 |
+| ----------- | ------------------------------------------------------- | --------------------------- | ------------------------------------ |
+| `userId`    | 1–64 chars of `A–Z a–z 0–9 @ . _ \| : -` (all channels) | same                        | same                                 |
+| `recipient` | email address, ≤ 254                                    | E.164 (`^\+[1-9]\d{1,14}$`) | 8–512 chars of `A–Z a–z 0–9 : . _ -` |
+| `subject`   | required, 1–150                                         | **must be absent**          | required, 1–100                      |
+| `message`   | 1–5,000                                                 | 1–1,600                     | 1–1,000                              |
+
+`userId` is who the request is sent _on behalf of_ — the identified user of the calling product. The charset
+covers what identity providers issue (UUIDs, `auth0|…`, emails, usernames). It is a body field only because
+this API has no authorizer; with one, the backend takes the id from the token's `sub` claim and the field
+leaves the body (see [Evolution](api-endpoint-design.md#evolution)).
 
 ### `GET /notifications`
 
-Query: `limit` (integer string, 1–100, default 20) · `cursor` (opaque string from a previous `nextCursor`).
-Unknown query keys are rejected.
+Query: `limit` (integer string, 1–100, default 20) · `cursor` (opaque string from a previous `nextCursor`) ·
+`userId` (optional; same rules as the body field — only that user's requests). Unknown query keys are rejected.
 
 ### `GET /notifications/{id}`
 
@@ -65,7 +72,7 @@ different answers.
 
 ```jsonc
 // 202 — POST                          Location: /notifications/3f0c9a52-…
-{ "data": { "id": "3f0c9a52-…", "channel": "EMAIL", "recipient": "jane@example.com", "subject": "Welcome!",
+{ "data": { "id": "3f0c9a52-…", "userId": "user-42", "channel": "EMAIL", "recipient": "jane@example.com", "subject": "Welcome!",
             "message": "…", "status": "QUEUED", "attempts": 0,
             "createdAt": "2026-09-12T04:00:00.000Z", "updatedAt": "2026-09-12T04:00:00.012Z" } }
 
@@ -147,9 +154,16 @@ const message = (max: number) =>
   z.string().trim().min(1, 'Message is required').max(max, `Message must be ${max} characters or fewer`);
 const subject = (max: number) =>
   z.string().trim().min(1, 'Subject is required').max(max, `Subject must be ${max} characters or fewer`);
+const userIdSchema = z
+  .string()
+  .trim()
+  .min(1, 'User ID is required')
+  .max(64, 'User ID must be 64 characters or fewer')
+  .regex(/^[A-Za-z0-9@._|:-]*$/, 'User ID may only contain letters, digits, and @ . _ | : -');
 
 export const createNotificationSchema = z.discriminatedUnion('channel', [
   z.strictObject({
+    userId: userIdSchema,
     channel: z.literal('EMAIL'),
     recipient: z
       .string()
@@ -160,6 +174,7 @@ export const createNotificationSchema = z.discriminatedUnion('channel', [
     message: message(5_000),
   }),
   z.strictObject({
+    userId: userIdSchema,
     channel: z.literal('SMS'),
     recipient: z
       .string()
@@ -168,6 +183,7 @@ export const createNotificationSchema = z.discriminatedUnion('channel', [
     message: message(1_600),
   }),
   z.strictObject({
+    userId: userIdSchema,
     channel: z.literal('PUSH'),
     recipient: z
       .string()

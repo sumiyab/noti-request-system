@@ -5,12 +5,12 @@ all four share the same layered source tree so the business rules are written on
 
 ## The functions
 
-| Function               | Trigger                   | Does                                                                            | Reads / writes                                                           | Timeout · memory |
-| ---------------------- | ------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ---------------- |
-| `createNotification`   | `POST /notifications`     | Validate body → `PutItem PENDING` → `SendMessage` → `UpdateItem QUEUED` → `202` | DynamoDB `PutItem`, `UpdateItem`; SQS `SendMessage`                      | 10 s · 256 MB    |
-| `listNotifications`    | `GET /notifications`      | Validate query → `Query byCreatedAt` desc → page + opaque cursor                | DynamoDB `Query` on the index only                                       | 10 s · 256 MB    |
-| `getNotification`      | `GET /notifications/{id}` | Validate id → `GetItem` → `200` or `404`                                        | DynamoDB `GetItem`                                                       | 10 s · 256 MB    |
-| `processNotifications` | SQS batch (≤ 10)          | Per record: claim → provider → record outcome; return `batchItemFailures`       | DynamoDB `UpdateItem`; SQS receive/delete (via the event source mapping) | 10 s · 256 MB    |
+| Function               | Trigger                   | Does                                                                                           | Reads / writes                                                           | Timeout · memory |
+| ---------------------- | ------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ---------------- |
+| `createNotification`   | `POST /notifications`     | Validate body → `PutItem PENDING` → `SendMessage` → `UpdateItem QUEUED` → `202`                | DynamoDB `PutItem`, `UpdateItem`; SQS `SendMessage`                      | 10 s · 256 MB    |
+| `listNotifications`    | `GET /notifications`      | Validate query → `Query byCreatedAt` (or `byUser` when `?userId=`) desc → page + opaque cursor | DynamoDB `Query` on the indexes only                                     | 10 s · 256 MB    |
+| `getNotification`      | `GET /notifications/{id}` | Validate id → `GetItem` → `200` or `404`                                                       | DynamoDB `GetItem`                                                       | 10 s · 256 MB    |
+| `processNotifications` | SQS batch (≤ 10)          | Per record: claim → provider → record outcome; return `batchItemFailures`                      | DynamoDB `UpdateItem`; SQS receive/delete (via the event source mapping) | 10 s · 256 MB    |
 
 Why not one function with a router: per-function IAM (the read paths _cannot_ write; only the API can
 enqueue), per-function CloudWatch metrics and logs, and smaller bundles. Four functions is still small enough
@@ -282,7 +282,11 @@ functions:
     iam:
       role:
         statements:
-          - { Effect: Allow, Action: [dynamodb:Query], Resource: !Sub '${NotificationRequestsTable.Arn}/index/byCreatedAt' }
+          - Effect: Allow
+            Action: [dynamodb:Query]
+            Resource:
+              - !Sub '${NotificationRequestsTable.Arn}/index/byCreatedAt'
+              - !Sub '${NotificationRequestsTable.Arn}/index/byUser'
 
   getNotification:
     handler: src/handlers/http/getNotification.handler

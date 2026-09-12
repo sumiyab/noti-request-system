@@ -64,7 +64,9 @@ functions:
         statements:
           - Effect: Allow
             Action: [dynamodb:Query]
-            Resource: !Join ['', [!GetAtt NotificationRequestsTable.Arn, '/index/byCreatedAt']]
+            Resource:
+              - !Join ['', [!GetAtt NotificationRequestsTable.Arn, '/index/byCreatedAt']]
+              - !Join ['', [!GetAtt NotificationRequestsTable.Arn, '/index/byUser']]
 
   getNotification:
     handler: src/handlers/http/getNotification.handler
@@ -112,12 +114,19 @@ resources:
           - { AttributeName: id, AttributeType: S }
           - { AttributeName: entityType, AttributeType: S }
           - { AttributeName: createdAt, AttributeType: S }
+          - { AttributeName: userId, AttributeType: S }
         KeySchema:
           - { AttributeName: id, KeyType: HASH }
         GlobalSecondaryIndexes:
           - IndexName: byCreatedAt
             KeySchema:
               - { AttributeName: entityType, KeyType: HASH }
+              - { AttributeName: createdAt, KeyType: RANGE }
+            Projection: { ProjectionType: ALL }
+          # One user's requests, newest first — GET /notifications?userId=…
+          - IndexName: byUser
+            KeySchema:
+              - { AttributeName: userId, KeyType: HASH }
               - { AttributeName: createdAt, KeyType: RANGE }
             Projection: { ProjectionType: ALL }
         PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }

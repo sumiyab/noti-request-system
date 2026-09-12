@@ -14,6 +14,7 @@ export const NotificationRow = ({ notification: n }: { notification: Notificatio
 
     <div className="min-w-0 flex-1">
       <p className="truncate font-medium">{n.recipient}</p>
+      <p className="text-muted-foreground truncate text-xs">from {n.userId}</p>
       {n.subject && <p className="truncate text-sm">{n.subject}</p>}
       <p className="text-muted-foreground text-sm">{truncate(n.message)}</p>
       {n.lastError && (

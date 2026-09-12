@@ -3,7 +3,7 @@ import { createHandler as createGet } from '../../../src/handlers/http/getNotifi
 import { createHandler as createList } from '../../../src/handlers/http/listNotifications';
 import { context, httpEvent, parseResponse } from '../../helpers/events';
 import { makeDeps } from '../../helpers/fakes';
-import { ID, emailInput, stored } from '../../helpers/fixtures';
+import { ID, USER_ID, emailInput, stored } from '../../helpers/fixtures';
 
 const invoke = async (handler: ReturnType<typeof createCreate>, event: ReturnType<typeof httpEvent>) =>
   parseResponse(await handler(event, context, () => {}));
@@ -18,13 +18,28 @@ describe('POST /notifications', () => {
 
     expect(res.statusCode).toBe(202);
     expect(res.headers?.location).toBe(`/notifications/${ID}`);
-    expect(res.json).toMatchObject({ data: { id: ID, status: 'QUEUED', channel: 'EMAIL' } });
+    expect(res.json).toMatchObject({ data: { id: ID, userId: USER_ID, status: 'QUEUED', channel: 'EMAIL' } });
+  });
+
+  test('400 VALIDATION_ERROR when userId is missing', async () => {
+    const { userId: _userId, ...body } = emailInput;
+    const res = await invoke(
+      createCreate(() => makeDeps()),
+      httpEvent({ method: 'POST', body }),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(res.json).toMatchObject({
+      error: { code: 'VALIDATION_ERROR', details: [{ path: 'userId' }] },
+    });
   });
 
   test('400 VALIDATION_ERROR with one detail per field', async () => {
     const res = await invoke(
       createCreate(() => makeDeps()),
-      httpEvent({ method: 'POST', body: { channel: 'EMAIL', recipient: 'nope', subject: '', message: 'x' } }),
+      httpEvent({
+        method: 'POST',
+        body: { userId: USER_ID, channel: 'EMAIL', recipient: 'nope', subject: '', message: 'x' },
+      }),
     );
     expect(res.statusCode).toBe(400);
     expect(res.json).toMatchObject({
@@ -69,6 +84,26 @@ describe('GET /notifications', () => {
     );
     expect(res.statusCode).toBe(200);
     expect(res.json).toEqual({ data: [stored()], nextCursor: null });
+  });
+
+  test('filters by userId', async () => {
+    const deps = makeDeps();
+    deps.repo.seed(stored()).seed(stored({ id: '1'.padEnd(36, '0'), userId: 'someone-else' }));
+    const res = await invoke(
+      createList(() => deps),
+      httpEvent({ query: { userId: USER_ID } }),
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.json).toEqual({ data: [stored()], nextCursor: null });
+  });
+
+  test('400 for a bad userId', async () => {
+    const res = await invoke(
+      createList(() => makeDeps()),
+      httpEvent({ query: { userId: 'has space' } }),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(res.json).toMatchObject({ error: { details: [{ path: 'userId' }] } });
   });
 
   test('400 for a bad limit', async () => {

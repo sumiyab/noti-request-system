@@ -12,7 +12,9 @@ describe('create → queue → process', () => {
     expect(created.statusCode).toBe(202);
     const id = (created.json?.data as { id: string }).id;
     expect(created.headers?.location).toBe(`/notifications/${id}`);
-    expect(created.json).toMatchObject({ data: { status: 'QUEUED', attempts: 0 } });
+    expect(created.json).toMatchObject({
+      data: { userId: emailInput.userId, status: 'QUEUED', attempts: 0 },
+    });
 
     const { processed, failures } = await h.runWorkerOnce();
     expect(processed).toBe(1);

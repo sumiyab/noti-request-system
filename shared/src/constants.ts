@@ -14,6 +14,9 @@ export const LIMITS = {
   PUSH: { recipient: { min: 8, max: 512 }, subject: 100, message: 1_000 },
 } as const;
 
+/** The requesting user's identifier: an opaque id from the caller's identity system (e.g. a JWT `sub`). */
+export const USER_ID = { min: 1, max: 64 } as const;
+
 /** Total delivery attempts before a request is marked FAILED. */
 export const MAX_ATTEMPTS = 3;
 

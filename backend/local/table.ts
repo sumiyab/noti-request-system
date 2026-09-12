@@ -6,7 +6,7 @@ import {
   type CreateTableCommandInput,
 } from '@aws-sdk/client-dynamodb';
 
-/** Same keys and index as the CloudFormation table in serverless.yml. */
+/** Same keys and indexes as the CloudFormation table in serverless.yml. */
 export const tableDefinition = (tableName: string): CreateTableCommandInput => ({
   TableName: tableName,
   BillingMode: 'PAY_PER_REQUEST',
@@ -14,6 +14,7 @@ export const tableDefinition = (tableName: string): CreateTableCommandInput => (
     { AttributeName: 'id', AttributeType: 'S' },
     { AttributeName: 'entityType', AttributeType: 'S' },
     { AttributeName: 'createdAt', AttributeType: 'S' },
+    { AttributeName: 'userId', AttributeType: 'S' },
   ],
   KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
   GlobalSecondaryIndexes: [
@@ -21,6 +22,14 @@ export const tableDefinition = (tableName: string): CreateTableCommandInput => (
       IndexName: 'byCreatedAt',
       KeySchema: [
         { AttributeName: 'entityType', KeyType: 'HASH' },
+        { AttributeName: 'createdAt', KeyType: 'RANGE' },
+      ],
+      Projection: { ProjectionType: 'ALL' },
+    },
+    {
+      IndexName: 'byUser',
+      KeySchema: [
+        { AttributeName: 'userId', KeyType: 'HASH' },
         { AttributeName: 'createdAt', KeyType: 'RANGE' },
       ],
       Projection: { ProjectionType: 'ALL' },

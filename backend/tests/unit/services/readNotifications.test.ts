@@ -32,4 +32,11 @@ describe('listNotifications', () => {
     expect(second.data).toHaveLength(1);
     expect(second.nextCursor).toBeNull();
   });
+
+  test('passes userId through to the repository', async () => {
+    const deps = makeDeps();
+    deps.repo.seed(stored()).seed(stored({ id: '1'.padEnd(36, '0'), userId: 'someone-else' }));
+    const page = await listNotifications(deps, { limit: 20, userId: 'someone-else' });
+    expect(page.data.map((n) => n.userId)).toEqual(['someone-else']);
+  });
 });

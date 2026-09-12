@@ -25,11 +25,11 @@ edited: its status changes are made by the system, not by clients.
 
 ## Endpoint catalogue
 
-| Endpoint                  | Purpose           | Lambda               | Idempotent                           | Success            | Errors                                |
-| ------------------------- | ----------------- | -------------------- | ------------------------------------ | ------------------ | ------------------------------------- |
-| `POST /notifications`     | Submit a request  | `createNotification` | No (each call creates a new request) | `202` + `Location` | `400`, `413`, `503`, `500`            |
-| `GET /notifications`      | Newest-first page | `listNotifications`  | Yes                                  | `200`              | `400` (bad `limit` / `cursor`), `500` |
-| `GET /notifications/{id}` | One request by id | `getNotification`    | Yes                                  | `200`              | `400` (not a UUID), `404`, `500`      |
+| Endpoint                  | Purpose                                  | Lambda               | Idempotent                           | Success            | Errors                                           |
+| ------------------------- | ---------------------------------------- | -------------------- | ------------------------------------ | ------------------ | ------------------------------------------------ |
+| `POST /notifications`     | Submit a request                         | `createNotification` | No (each call creates a new request) | `202` + `Location` | `400`, `413`, `503`, `500`                       |
+| `GET /notifications`      | Newest-first page, optionally one user's | `listNotifications`  | Yes                                  | `200`              | `400` (bad `limit` / `cursor` / `userId`), `500` |
+| `GET /notifications/{id}` | One request by id                        | `getNotification`    | Yes                                  | `200`              | `400` (not a UUID), `404`, `500`                 |
 
 Everything else on the API returns `404 NOT_FOUND` from API Gateway's default route (`$default` is not
 configured, so an unknown path never reaches a Lambda).
@@ -40,7 +40,7 @@ configured, so an unknown path never reaches a Lambda).
 
 ```
 → content-type: application/json
-  { "channel": "EMAIL", "recipient": "…", "subject": "…", "message": "…" }
+  { "userId": "…", "channel": "EMAIL", "recipient": "…", "subject": "…", "message": "…" }
 
 ← 202 Accepted
   location: /notifications/3f0c9a52-…
@@ -56,12 +56,16 @@ configured, so an unknown path never reaches a Lambda).
 - **`503 ENQUEUE_FAILED` is the only retryable error.** The client may resubmit; the stored `FAILED` item
   remains as a record of the attempt.
 
-### `GET /notifications?limit=20&cursor=…`
+### `GET /notifications?limit=20&cursor=…&userId=…`
 
 ```
 ← 200 OK
   { "data": [ …newest first… ], "nextCursor": "eyJ…" | null }
 ```
+
+- **`userId` is the one filter**, because it is the one a product needs ("my requests") and the one an index
+  serves: the `byUser` GSI makes it a `Query`, not a `FilterExpression`, so pages stay full and cheap. With an
+  authorizer this stops being a parameter and becomes the caller's identity.
 
 - **Cursor pagination, not offsets.** DynamoDB has no `OFFSET`; a cursor is stable under inserts (a new item
   at the top does not shift page 2), which matters for a list that updates every 2 s.
@@ -70,8 +74,8 @@ configured, so an unknown path never reaches a Lambda).
   API's contract stays simple.)
 - **Newest first only.** No `order` parameter: the UI has one view, and the index has one direction that is
   cheap. Adding `order=asc` later is `ScanIndexForward: true`, nothing more.
-- **No filters (`status=`, `channel=`).** No index supports them; a `FilterExpression` would scan pages and
-  return uneven page sizes. If a "failed only" view is ever needed, that is a new GSI, not a query param.
+- **No other filters (`status=`, `channel=`).** No index supports them; a `FilterExpression` would scan pages
+  and return uneven page sizes. If a "failed only" view is ever needed, that is a new GSI, not a query param.
 - **Read-after-write is near-immediate but not guaranteed.** The list reads a GSI, which is eventually
   consistent — typically single-digit milliseconds behind. The UI prepends the `POST` response to its cache and
   invalidates the list, so a user never notices; an API client that `POST`s then immediately `GET`s the list
@@ -146,6 +150,10 @@ Changes that would **not** break existing clients (add freely):
 Changes that **would** (need a new version/stage):
 
 - renaming or removing a field, changing `status` values, changing the envelope
+- **moving `userId` from the body to the token.** The planned path once a JWT authorizer (Cognito) sits in
+  front of the API: `createNotification` reads `requestContext.authorizer.jwt.claims.sub`, the list endpoint
+  scopes itself to the caller and drops `?userId=`, and the body field is rejected as unknown. Clients that
+  send `userId` today would break, so it ships as a new stage or with a transition window that accepts both.
 
 ## Alternatives considered
 

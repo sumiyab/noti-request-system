@@ -1,8 +1,9 @@
 import { createNotificationSchema, listNotificationsQuerySchema, notificationIdSchema } from '../src';
 
-const email = { channel: 'EMAIL', recipient: 'jane@example.com', subject: 'Welcome!', message: 'Hi' };
-const sms = { channel: 'SMS', recipient: '+97699112233', message: 'Hi' };
-const push = { channel: 'PUSH', recipient: 'abc123:def_456', subject: 'Title', message: 'Hi' };
+const userId = 'user-42';
+const email = { userId, channel: 'EMAIL', recipient: 'jane@example.com', subject: 'Welcome!', message: 'Hi' };
+const sms = { userId, channel: 'SMS', recipient: '+97699112233', message: 'Hi' };
+const push = { userId, channel: 'PUSH', recipient: 'abc123:def_456', subject: 'Title', message: 'Hi' };
 
 const errorPaths = (input: unknown) => {
   const result = createNotificationSchema.safeParse(input);
@@ -35,6 +36,10 @@ describe('createNotificationSchema', () => {
   });
 
   test.each([
+    ['userId required', { ...email, userId: '' }, ['userId']],
+    ['userId ≤ 64', { ...email, userId: 'u'.repeat(65) }, ['userId']],
+    ['userId charset', { ...email, userId: 'has space' }, ['userId']],
+    ['userId missing', { ...sms, userId: undefined }, ['userId']],
     ['EMAIL recipient must be an email', { ...email, recipient: 'jane@' }, ['recipient']],
     ['EMAIL subject required', { ...email, subject: '' }, ['subject']],
     ['EMAIL subject ≤ 150', { ...email, subject: 'x'.repeat(151) }, ['subject']],
@@ -55,8 +60,20 @@ describe('createNotificationSchema', () => {
     expect(createNotificationSchema.safeParse({ ...sms, subject: 'Hi' }).success).toBe(false);
   });
 
+  test('accepts the id shapes identity providers issue', () => {
+    for (const id of [
+      '3f0c9a52-8f6e-4d63-9a51-3c1e0f2b7d10',
+      'auth0|abc123',
+      'jane@example.com',
+      'jane_doe',
+    ]) {
+      expect(createNotificationSchema.safeParse({ ...email, userId: id }).success).toBe(true);
+    }
+  });
+
   test('reports every failing field at once', () => {
-    expect(errorPaths({ ...email, recipient: 'nope', subject: '', message: '' })).toEqual([
+    expect(errorPaths({ ...email, userId: '', recipient: 'nope', subject: '', message: '' })).toEqual([
+      'userId',
       'recipient',
       'subject',
       'message',
@@ -75,6 +92,15 @@ describe('listNotificationsQuerySchema', () => {
 
   test.each(['0', '101', 'ten', '1.5'])('rejects limit=%s', (limit) => {
     expect(listNotificationsQuerySchema.safeParse({ limit }).success).toBe(false);
+  });
+
+  test('accepts an optional userId filter and validates it like the body field', () => {
+    expect(listNotificationsQuerySchema.parse({ userId: ' user-42 ' })).toEqual({
+      limit: 20,
+      userId: 'user-42',
+    });
+    expect(listNotificationsQuerySchema.safeParse({ userId: '' }).success).toBe(false);
+    expect(listNotificationsQuerySchema.safeParse({ userId: 'has space' }).success).toBe(false);
   });
 
   test('rejects unknown query keys', () => {

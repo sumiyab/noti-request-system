@@ -7,6 +7,7 @@ import type { Channel } from '@/schemas';
  * channels later without changes below this file.
  */
 export type NotificationFormValues = {
+  userId: string;
   channel: Channel;
   recipient: string;
   subject?: string;

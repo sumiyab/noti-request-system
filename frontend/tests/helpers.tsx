@@ -16,6 +16,7 @@ export const renderWithQuery = (ui: ReactElement, options?: RenderOptions) => {
 
 export const notification = (overrides: Partial<Notification> = {}): Notification => ({
   id: '3f0c9a52-8f6e-4d63-9a51-3c1e0f2b7d10',
+  userId: 'user-42',
   channel: 'EMAIL',
   recipient: 'jane@example.com',
   subject: 'Welcome!',
