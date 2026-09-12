@@ -1,7 +1,7 @@
 # Lambda function design — `backend/`
 
-Four functions, one per unit of work. Each gets only the permissions, environment, and code its job needs;
-all four share the same layered source tree so the business rules are written once and tested without AWS.
+Four functions, one per unit of work. Each gets only the permissions, environment, and code its job needs; all
+four share the same layered source tree so the business rules are written once and tested without AWS.
 
 ## The functions
 
@@ -16,9 +16,9 @@ Why not one function with a router: per-function IAM (the read paths _cannot_ wr
 enqueue), per-function CloudWatch metrics and logs, and smaller bundles. Four functions is still small enough
 that the duplication (one entry file each) is trivial.
 
-Why these sizes: every handler does two or three fast network calls; 256 MB gives a proportionally faster
-vCPU share for cold starts without paying for memory nobody uses. 10 s is generous for the API functions and,
-for the worker, is the number the queue's 60 s visibility timeout is derived from (≥ 6×).
+Why these sizes: every handler does two or three fast network calls; 256 MB gives a proportionally faster vCPU
+share for cold starts without paying for memory nobody uses. 10 s is generous for the API functions and, for
+the worker, is the number the queue's 60 s visibility timeout is derived from (≥ 6×).
 
 ## Layering
 
@@ -169,9 +169,10 @@ export const handler: SQSHandler = async (event) => {
 ```
 
 `processRecord` parses the body, calls the `processNotification` service, and maps its result to
-`'done' | 'retry'` exactly as the table in [sqs-message-design.md](sqs-message-design.md#how-the-worker-handles-one-record)
-specifies. Records are processed sequentially — a batch is at most 10 quick operations, and sequential keeps
-provider concurrency predictable. The handler never throws; a thrown error would fail the whole batch.
+`'done' | 'retry'` exactly as the table in
+[sqs-message-design.md](sqs-message-design.md#how-the-worker-handles-one-record) specifies. Records are
+processed sequentially — a batch is at most 10 quick operations, and sequential keeps provider concurrency
+predictable. The handler never throws; a thrown error would fail the whole batch.
 
 ## Errors — `lib/errors.ts`
 
@@ -316,9 +317,9 @@ functions:
 
 Notes:
 
-- **Bundling.** Serverless v4 bundles with esbuild out of the box — one small CommonJS bundle per function, tree-shaken
-  to what that handler imports. `@aws-sdk/*` is excluded because the Node 22 runtime ships it; that keeps
-  bundles under ~100 KB and cold starts short.
+- **Bundling.** Serverless v4 bundles with esbuild out of the box — one small CommonJS bundle per function,
+  tree-shaken to what that handler imports. `@aws-sdk/*` is excluded because the Node 22 runtime ships it;
+  that keeps bundles under ~100 KB and cold starts short.
 - **Per-function IAM** is native in Serverless v4 (`iam.role.statements` under each function; the old
   `serverless-iam-roles-per-function` plugin is no longer needed). The read handlers physically cannot write;
   the worker cannot enqueue.
@@ -327,15 +328,16 @@ Notes:
 
 ## Cold start and concurrency
 
-- API functions: cold start ≈ 200–400 ms (small bundle, clients created lazily on first use of the
-  module). Warm: single-digit ms of handler overhead.
+- API functions: cold start ≈ 200–400 ms (small bundle, clients created lazily on first use of the module).
+  Warm: single-digit ms of handler overhead.
 - Worker: Lambda scales the SQS poller up to 1,000 concurrent invocations by default. The simulated provider
   does not care, but a real one would; `scalingConfig: { maximumConcurrency: 10 }` on the event source is the
   knob to cap it, and is left out until a provider with a rate limit exists.
 
 ## Testing map
 
-All suites run on Jest (`@swc/jest` transform); see [backend-design.md](backend-design.md#testing-with-jest) for configs.
+All suites run on Jest (`@swc/jest` transform); see [backend-design.md](backend-design.md#testing-with-jest)
+for configs.
 
 | What                     | Where                     | Doubles                                                                                       |
 | ------------------------ | ------------------------- | --------------------------------------------------------------------------------------------- |

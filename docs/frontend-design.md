@@ -96,11 +96,13 @@ flowchart LR
 
 - **Create** — `useMutation`; on success the returned item is prepended to the first page of the list cache
   (instant feedback, and it covers the GSI's eventual consistency), then the list is invalidated.
-- **List** — `useInfiniteQuery` keyed on `['notifications']`, `getNextPageParam: (last) => last.nextCursor ?? undefined`.
-  `refetchInterval` returns `2000` while any loaded item is non-terminal, else `false`. Only the first page
-  is refetched on the interval; older pages are stable by construction (cursor pagination).
+- **List** — `useInfiniteQuery` keyed on `['notifications']`,
+  `getNextPageParam: (last) => last.nextCursor ?? undefined`. `refetchInterval` returns `2000` while any
+  loaded item is non-terminal, else `false`. Only the first page is refetched on the interval; older pages are
+  stable by construction (cursor pagination).
 - **Errors** — validation errors are derived from `mutation.error` inside the form; everything else is one
-  toast from the global `MutationCache` (see [api-contract-and-validation.md](api-contract-and-validation.md#frontend-mapping)).
+  toast from the global `MutationCache` (see
+  [api-contract-and-validation.md](api-contract-and-validation.md#frontend-mapping)).
 
 ## Components — responsibilities
 
@@ -140,31 +142,32 @@ const onSubmit = form.handleSubmit((values) =>
 );
 ```
 
-- **The resolver is the shared schema** — the form cannot drift from the API. `mode: 'onBlur'` gives
-  per-field feedback without flashing errors while typing.
+- **The resolver is the shared schema** — the form cannot drift from the API. `mode: 'onBlur'` gives per-field
+  feedback without flashing errors while typing.
 - **Discriminated union and the subject field.** The form edits a flat `NotificationFormValues` shape; the
-  resolver validates against the union (`zodResolver<NotificationFormValues, unknown, CreateNotificationInput>`).
-  `shouldUnregister: true` plus conditional rendering means that when `channel` becomes `SMS` the unmounted
-  subject input drops out of the values, so the strict SMS schema receives no `subject` key.
-- **Server errors land in the same place as client errors.** `setError(path, { message })` renders through
-  the same `FormMessage`; the user cannot tell which side rejected the field — which is the point.
+  resolver validates against the union
+  (`zodResolver<NotificationFormValues, unknown, CreateNotificationInput>`). `shouldUnregister: true` plus
+  conditional rendering means that when `channel` becomes `SMS` the unmounted subject input drops out of the
+  values, so the strict SMS schema receives no `subject` key.
+- **Server errors land in the same place as client errors.** `setError(path, { message })` renders through the
+  same `FormMessage`; the user cannot tell which side rejected the field — which is the point.
 - **Values are typed by the schema** (`CreateNotificationInput`), so `mutate(values)` needs no cast.
 
 ## Styling — Tailwind CSS 4 + shadcn/ui
 
 - **Tailwind v4 is CSS-first**: `globals.css` starts with `@import "tailwindcss";` and defines tokens in
   `@theme` (colours, radius) — no `tailwind.config.*`. `postcss.config.mjs` registers `@tailwindcss/postcss`.
-- **shadcn/ui components are source files**, added with `bunx shadcn@latest add button input textarea label
-radio-group field badge card sonner`. They live in `src/components/ui/`, are linted and formatted like any
-  other file, and can be edited freely. `components.json` records the style/aliases so later `add` commands
-  match.
-- **Status colours are tokens**, not ad-hoc classes: `--status-queued`, `--status-sent`, … in `@theme`, used by
-  a `StatusBadge` `variant` map. One place to change the palette.
+- **shadcn/ui components are source files**, added with
+  `bunx shadcn@latest add button input textarea label radio-group field badge card sonner`. They live in
+  `src/components/ui/`, are linted and formatted like any other file, and can be edited freely.
+  `components.json` records the style/aliases so later `add` commands match.
+- **Status colours are tokens**, not ad-hoc classes: `--status-queued`, `--status-sent`, … in `@theme`, used
+  by a `StatusBadge` `variant` map. One place to change the palette.
 - **`cn()`** (`lib/utils.ts`) merges conditional classes without duplicates — the only styling helper.
 - **`prettier-plugin-tailwindcss`** sorts class lists, so diffs stay readable.
 - Radix primitives (RadioGroup, etc.) work in `jsdom` with two small polyfills in `jest.setup.ts`
-  (`ResizeObserver`, `window.matchMedia`). `Select` is avoided in favour of `RadioGroup` for the three channels
-  — three options fit on screen and RadioGroup needs no pointer-event shims in tests.
+  (`ResizeObserver`, `window.matchMedia`). `Select` is avoided in favour of `RadioGroup` for the three
+  channels — three options fit on screen and RadioGroup needs no pointer-event shims in tests.
 
 ## Lint — ESLint
 
@@ -292,9 +295,9 @@ beforeEach(() => {
 });
 ```
 
-`next/jest` configures SWC for TS/TSX, stubs CSS and static assets, and loads `.env.test` — no
-`ts-jest`, no Babel. `bun run test` executes the `jest` binary, which runs on Node because Bun honours its
-shebang; the result is identical to `npx jest` in CI.
+`next/jest` configures SWC for TS/TSX, stubs CSS and static assets, and loads `.env.test` — no `ts-jest`, no
+Babel. `bun run test` executes the `jest` binary, which runs on Node because Bun honours its shebang; the
+result is identical to `npx jest` in CI.
 
 ### What is tested and how
 
@@ -329,7 +332,8 @@ never by implementation details; hooks are tested with the real `QueryClient`, o
 }
 ```
 
-`.prettierrc` (root): `{ "plugins": ["prettier-plugin-tailwindcss"], "singleQuote": true, "printWidth": 110 }`.
+`.prettierrc` (root):
+`{ "plugins": ["prettier-plugin-tailwindcss"], "singleQuote": true, "printWidth": 110 }`.
 
 Root `package.json` fans out: `bun run --filter '*' test`, `lint`, `typecheck`.
 

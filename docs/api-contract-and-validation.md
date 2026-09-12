@@ -61,7 +61,8 @@ leaves the body (see [Evolution](api-endpoint-design.md#evolution)).
 ### `GET /notifications`
 
 Query: `limit` (integer string, 1–100, default 20) · `cursor` (opaque string from a previous `nextCursor`) ·
-`userId` (optional; same rules as the body field — only that user's requests). Unknown query keys are rejected.
+`userId` (optional; same rules as the body field — only that user's requests). Unknown query keys are
+rejected.
 
 ### `GET /notifications/{id}`
 
@@ -118,16 +119,18 @@ flowchart LR
 | 4   | **Service** — business       | Nothing today beyond ③ (no quotas, no per-recipient rules); the layer exists so those have a home      | `AppError` subclass                                 |
 | 5   | **Database** — state         | `ConditionExpression` on `status` / `attempts` for every transition                                    | `TransitionConflict` (handled, never an HTTP error) |
 
-Internal inputs are validated the same way, with the same tool: the **SQS message body** (`queueMessageSchema`),
-the **pagination cursor** after base64url-decoding (`cursorSchema` — a bad cursor is `400` on `cursor`, not a
-DynamoDB exception), and the **environment** at cold start (`configSchema` — a missing `TABLE_NAME` fails the
-first invocation with a clear message rather than a `ResourceNotFoundException` later).
+Internal inputs are validated the same way, with the same tool: the **SQS message body**
+(`queueMessageSchema`), the **pagination cursor** after base64url-decoding (`cursorSchema` — a bad cursor is
+`400` on `cursor`, not a DynamoDB exception), and the **environment** at cold start (`configSchema` — a
+missing `TABLE_NAME` fails the first invocation with a clear message rather than a `ResourceNotFoundException`
+later).
 
 ### Principles
 
 1. **Parse, don't validate.** `createNotificationSchema.parse(body)` returns a _typed, normalised_ value
    (`CreateNotificationInput`) — trimmed, narrowed by channel, unknown keys gone. Downstream code takes that
-   type and never re-checks. Types are inferred from the schema (`z.infer`), so there is exactly one definition.
+   type and never re-checks. Types are inferred from the schema (`z.infer`), so there is exactly one
+   definition.
 2. **Reject unknown, don't strip.** zod's default strips unknown keys silently; `strictObject` makes them an
    error. For an API whose input is a form, a stripped field is a lost field.
 3. **Per-channel shapes, not optional fields.** A single object with `subject?: string` would allow an SMS
@@ -137,11 +140,11 @@ first invocation with a clear message rather than a `ResourceNotFoundException` 
    a form, and the frontend can highlight every field.
 5. **Messages are written once, in the schema.** `'Enter a valid email address'` is the string both the form
    and the API produce. No mapping table, no divergence.
-6. **`path` is the field name.** `details[].path` is the dot-joined zod path (`recipient`, `subject`). The form
-   maps it to a field; a path it does not recognise becomes a form-level error. Unknown-key errors report
+6. **`path` is the field name.** `details[].path` is the dot-joined zod path (`recipient`, `subject`). The
+   form maps it to a field; a path it does not recognise becomes a form-level error. Unknown-key errors report
    `path: ""` with the key named in the message.
-7. **Limits are also abuse limits.** Field maxima, the 32 KB body cap, `limit ≤ 100` — each bounds memory,
-   log volume, and DynamoDB item size (400 KB max; the largest valid item is ~6 KB).
+7. **Limits are also abuse limits.** Field maxima, the 32 KB body cap, `limit ≤ 100` — each bounds memory, log
+   volume, and DynamoDB item size (400 KB max; the largest valid item is ~6 KB).
 8. **Server-side is authoritative.** Nothing about the frontend's validation is assumed; `curl` sees exactly
    the same rules.
 
@@ -279,8 +282,8 @@ new QueryClient({
 | `ENQUEUE_FAILED`, `NETWORK_ERROR`, `INTERNAL_ERROR`, … | `MutationCache.onError` | one toast                                                               |
 | `GET /notifications` failures                          | the list                | `query.error` → inline "could not load"                                 |
 
-`throwOnError` + an error boundary is deliberately not used: a `400` on a form is expected and recoverable, and
-belongs next to the field, not in a boundary.
+`throwOnError` + an error boundary is deliberately not used: a `400` on a form is expected and recoverable,
+and belongs next to the field, not in a boundary.
 
 The form `unregister`s `subject` when `channel === 'SMS'` rather than sending `""`, so the strict schema is
 satisfied without a special case.

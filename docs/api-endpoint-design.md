@@ -77,9 +77,9 @@ configured, so an unknown path never reaches a Lambda).
 - **No other filters (`status=`, `channel=`).** No index supports them; a `FilterExpression` would scan pages
   and return uneven page sizes. If a "failed only" view is ever needed, that is a new GSI, not a query param.
 - **Read-after-write is near-immediate but not guaranteed.** The list reads a GSI, which is eventually
-  consistent — typically single-digit milliseconds behind. The UI prepends the `POST` response to its cache and
-  invalidates the list, so a user never notices; an API client that `POST`s then immediately `GET`s the list
-  could, rarely, miss the new item for one poll.
+  consistent — typically single-digit milliseconds behind. The UI prepends the `POST` response to its cache
+  and invalidates the list, so a user never notices; an API client that `POST`s then immediately `GET`s the
+  list could, rarely, miss the new item for one poll.
 
 ### `GET /notifications/{id}`
 
@@ -136,8 +136,8 @@ POST /notifications ──► 202 { data }        insert into the list immediate
                     (no per-item GET: one list call refreshes every status at once)
 ```
 
-`GET /notifications/{id}` is for deep links and API clients following `Location`; the UI never needs it because
-the list already contains everything.
+`GET /notifications/{id}` is for deep links and API clients following `Location`; the UI never needs it
+because the list already contains everything.
 
 ## Evolution
 

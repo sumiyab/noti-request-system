@@ -1,7 +1,7 @@
 # DynamoDB table design — `notification-requests`
 
-One table, one item per notification request, two global secondary indexes for listing (every request, and
-one user's). Everything the API and the worker do is either a key lookup on the table or a single query on an
+One table, one item per notification request, two global secondary indexes for listing (every request, and one
+user's). Everything the API and the worker do is either a key lookup on the table or a single query on an
 index.
 
 ## Access patterns
@@ -96,8 +96,8 @@ Table (PK = id)                        GSI byCreatedAt (PK = entityType, SK = cr
 ```
 
 Attribute names match the API response one-to-one, so the repository's item → DTO mapping is a pass-through
-minus `entityType`. Optional attributes are **omitted**, not stored as `null`, so `attribute_exists` checks and
-the API's `subject?: string` type both stay honest.
+minus `entityType`. Optional attributes are **omitted**, not stored as `null`, so `attribute_exists` checks
+and the API's `subject?: string` type both stay honest.
 
 ## Global secondary index `byCreatedAt`
 
@@ -107,17 +107,17 @@ the API's `subject?: string` type both stay honest.
 | Sort key      | `createdAt` (String)                            |
 | Projection    | `ALL`                                           |
 
-Listing is `Query(entityType = "NOTIFICATION")`, descending by `createdAt`, `Limit = limit`. Because the
-index is a copy with `ALL` projection, the list endpoint never has to go back to the table.
+Listing is `Query(entityType = "NOTIFICATION")`, descending by `createdAt`, `Limit = limit`. Because the index
+is a copy with `ALL` projection, the list endpoint never has to go back to the table.
 
 **Why a constant partition key.** DynamoDB can only sort within a partition, and "newest first across the
 whole system" needs one global order. A constant key gives that in one `Query`. The cost is that every item
 lands in the same index partition, which caps sustained writes to the index at roughly 1,000 per second — far
-above this project's needs. If it ever mattered, the key would become a date bucket (`NOTIFICATION#2026-09-12`)
-and the list would query today's bucket first, then the previous day's.
+above this project's needs. If it ever mattered, the key would become a date bucket
+(`NOTIFICATION#2026-09-12`) and the list would query today's bucket first, then the previous day's.
 
-**Why not `Scan`.** `Scan` reads the whole table on every list call and returns items in no useful order;
-it is fine at ten items and unusable at ten thousand.
+**Why not `Scan`.** `Scan` reads the whole table on every list call and returns items in no useful order; it
+is fine at ten items and unusable at ten thousand.
 
 **Why not a `status` index.** The UI shows every request, not "only failed ones", and the worker locates items
 by id from the SQS message — nobody queries by status.
@@ -131,19 +131,19 @@ by id from the SQS message — nobody queries by status.
 | Projection    | `ALL`                |
 
 `GET /notifications?userId=…` is `Query(userId = :userId)`, descending by `createdAt` — the same code path as
-the global list with a different index and key condition. In a real product this is the query that matters:
-a signed-in user sees their own history, and their partition key comes from the token, not the query string.
+the global list with a different index and key condition. In a real product this is the query that matters: a
+signed-in user sees their own history, and their partition key comes from the token, not the query string.
 Unlike `byCreatedAt` there is no hot partition — users are spread by their ids.
 
 ### Pagination cursor
 
-`Query` returns `LastEvaluatedKey` — `{ id, entityType, createdAt }` for `byCreatedAt`, `{ id, userId,
-createdAt }` for `byUser`. The repository base64url-encodes that JSON as `nextCursor`; the next request sends
-it back and the repository decodes it into `ExclusiveStartKey`. The cursor is validated on decode (a zod
-union of the two key shapes) so a malformed or hand-edited cursor becomes a `400 VALIDATION_ERROR` on
-`cursor`, not a DynamoDB exception. The decoder also checks that the cursor belongs to the query being
-continued — a `byCreatedAt` cursor on a `?userId=` request, or a cursor for a different `userId`, is rejected
-the same way. Clients never need to know what is inside.
+`Query` returns `LastEvaluatedKey` — `{ id, entityType, createdAt }` for `byCreatedAt`,
+`{ id, userId, createdAt }` for `byUser`. The repository base64url-encodes that JSON as `nextCursor`; the next
+request sends it back and the repository decodes it into `ExclusiveStartKey`. The cursor is validated on
+decode (a zod union of the two key shapes) so a malformed or hand-edited cursor becomes a
+`400 VALIDATION_ERROR` on `cursor`, not a DynamoDB exception. The decoder also checks that the cursor belongs
+to the query being continued — a `byCreatedAt` cursor on a `?userId=` request, or a cursor for a different
+`userId`, is rejected the same way. Clients never need to know what is inside.
 
 ## Writes and conditions
 
@@ -167,8 +167,8 @@ Two consequences worth stating:
 
 - **Duplicate SQS deliveries are harmless.** A second delivery for a `SENT` item fails the `claimed` condition
   and the worker skips it. Correctness never depends on exactly-once delivery.
-- **The attempts cap is enforced at the database.** `attempts < :max` in the claim condition means that even if
-  SQS redelivered more times than expected, a fourth attempt cannot start.
+- **The attempts cap is enforced at the database.** `attempts < :max` in the claim condition means that even
+  if SQS redelivered more times than expected, a fourth attempt cannot start.
 
 ## CloudFormation (in `backend/serverless.yml`)
 
@@ -219,8 +219,8 @@ Per-function IAM follows the access patterns exactly:
 
 ## Local development
 
-`backend/local/setup.ts` creates the same table (same keys, same index) in DynamoDB Local on first start, using
-`CreateTableCommand` with the definition above. The AWS SDK is pointed at the emulator purely via
+`backend/local/setup.ts` creates the same table (same keys, same index) in DynamoDB Local on first start,
+using `CreateTableCommand` with the definition above. The AWS SDK is pointed at the emulator purely via
 `AWS_ENDPOINT_URL_DYNAMODB=http://localhost:8000`; the repository code is identical in both environments.
 
 ## Alternatives considered

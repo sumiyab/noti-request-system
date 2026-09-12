@@ -185,7 +185,8 @@ export default {
 ```
 
 Run with `--runInBand`: the tests share one DynamoDB Local table and one ElasticMQ queue, so they must not
-interleave. `env.ts` sets the emulator endpoints; `harness.ts` recreates the table and purges the queue per file.
+interleave. `env.ts` sets the emulator endpoints; `harness.ts` recreates the table and purges the queue per
+file.
 
 ### `serverless.yml` skeleton
 
@@ -228,8 +229,9 @@ resources:   # see dynamodb-table-design.md and sqs-message-design.md — table,
     TableName:  { Value: !Ref NotificationRequestsTable }
 ```
 
-`http://localhost:3000` is always allowed so a local `next dev` can talk to the deployed API; the second origin is the
-hosted frontend, overridable at deploy time (`serverless deploy --param="frontendOrigin=https://…"`).
+`http://localhost:3000` is always allowed so a local `next dev` can talk to the deployed API; the second
+origin is the hosted frontend, overridable at deploy time
+(`serverless deploy --param="frontendOrigin=https://…"`).
 
 ## Environment
 

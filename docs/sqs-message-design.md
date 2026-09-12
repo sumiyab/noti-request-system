@@ -1,7 +1,7 @@
 # SQS message design — `notification-requests`
 
-The queue decouples _accepting_ a request from _processing_ it. It carries pointers, not payloads: DynamoDB
-is the source of truth, and the message only says "go look at this request".
+The queue decouples _accepting_ a request from _processing_ it. It carries pointers, not payloads: DynamoDB is
+the source of truth, and the message only says "go look at this request".
 
 ## Message
 
@@ -37,8 +37,8 @@ The worker has to touch DynamoDB anyway to claim the request, so carrying the pa
 ### No message attributes, no message group
 
 Nothing routes on the message, and nothing needs ordering: each notification is independent. The queue is a
-**Standard** queue (at-least-once, best-effort order), which is exactly the guarantee the design needs —
-every downstream transition is idempotent, so a duplicate delivery is a no-op, not a bug.
+**Standard** queue (at-least-once, best-effort order), which is exactly the guarantee the design needs — every
+downstream transition is idempotent, so a duplicate delivery is a no-op, not a bug.
 
 ## Queues
 
@@ -83,8 +83,8 @@ functions:
           functionResponseType: ReportBatchItemFailures
 ```
 
-- **`batchSize: 10`** — Lambda invokes with up to 10 records; the worker processes them sequentially (each
-  is a couple of fast DynamoDB calls plus one provider call).
+- **`batchSize: 10`** — Lambda invokes with up to 10 records; the worker processes them sequentially (each is
+  a couple of fast DynamoDB calls plus one provider call).
 - **`maximumBatchingWindow: 0`** — invoke as soon as a message exists; latency matters more than batch
   efficiency at this scale.
 - **`functionResponseType: ReportBatchItemFailures`** — the worker returns which records failed. SQS deletes
@@ -192,10 +192,10 @@ Nobody gets DLQ permissions; redrive is done from the console or CLI when needed
 ## Local development
 
 ElasticMQ (`backend/local/elasticmq.conf`) declares both queues with the same names, visibility timeout, and
-redrive policy. The local runner's poller (`backend/local/server.ts`) mirrors the event source mapping: long-poll
-`ReceiveMessage` (`MaxNumberOfMessages: 10`, `WaitTimeSeconds: 20`), build a real `SQSEvent`, invoke the
-handler, then `DeleteMessageBatch` for every record **not** listed in `batchItemFailures`. The handler code
-is identical to production; only the poller is local.
+redrive policy. The local runner's poller (`backend/local/server.ts`) mirrors the event source mapping:
+long-poll `ReceiveMessage` (`MaxNumberOfMessages: 10`, `WaitTimeSeconds: 20`), build a real `SQSEvent`, invoke
+the handler, then `DeleteMessageBatch` for every record **not** listed in `batchItemFailures`. The handler
+code is identical to production; only the poller is local.
 
 ## Alternatives considered
 
