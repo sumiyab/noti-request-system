@@ -1,7 +1,7 @@
 # API contract and validation strategy
 
-The endpoint list and field limits are in the README's [API reference](../README.md#api-reference). This
-document is the _rules behind them_: how every request and response is shaped, where each check runs, and why.
+The endpoint list and field limits are in the README's [API reference](../README.md#api). This document is the
+_rules behind them_: how every request and response is shaped, where each check runs, and why.
 
 ## Conventions
 
@@ -307,3 +307,32 @@ satisfied without a special case.
 | RFC 9457 `application/problem+json`                 | A fine standard, but the frontend is the only client and the custom envelope is smaller and carries `details` in the shape the form needs. |
 | Strip unknown fields (zod default)                  | Silent data loss on typos; see principle 2.                                                                                                |
 | `422 Unprocessable Content` for validation          | Splits "bad input" across two codes with no benefit to this client.                                                                        |
+
+## How a request is received, validated, and stored
+
+Validation runs before any I/O, so only requests that pass every rule reach DynamoDB; a rejected request
+writes nothing.
+
+1. **Receive** — API Gateway HTTP API → `createNotification` Lambda
+   (`backend/src/handlers/http/createNotification/`). Accepts `POST /notifications`; API Gateway answers CORS
+   preflights, `httpHandler` rejects bodies over 32 KB before parsing. _On failure:_ `413 PAYLOAD_TOO_LARGE`.
+2. **Parse** — `parseJsonBody` (`backend/src/lib/http.ts`). Body must be present, valid JSON, and a JSON
+   object (not an array or scalar). _On failure:_ `400 INVALID_JSON`.
+3. **Validate** — `parseWith(createNotificationSchema)` — schema in `shared/src/schemas.ts`. Zod discriminated
+   union on `channel`: `userId` plus the per-channel `recipient`/`subject`/`message` rules in the table above,
+   trimming, and `strictObject` so unknown fields are rejected. The same schema validates the form, so the UI
+   and API can never disagree. _On failure:_ `400 VALIDATION_ERROR` with `details: [{ path, message }]` — one
+   entry per field.
+4. **Store** — `createNotification` service → `repo.create`
+   (`backend/src/repositories/notificationRepository.ts`). Adds `id` (UUID v4), `status: PENDING`,
+   `attempts: 0`, `createdAt`/`updatedAt`; `PutItem` into `notification-requests-{stage}` with
+   `attribute_not_exists(id)` so an id can never be overwritten; `userId` is a key of the `byUser` index, so
+   the item is immediately queryable per user. Then enqueues a pointer on SQS and marks the item `QUEUED`. _On
+   failure:_ `503 ENQUEUE_FAILED` — the item is kept and marked `FAILED`, never lost silently.
+5. **Respond** — `httpHandler` envelope. `202 Accepted`, `Location: /notifications/{id}`, and the stored item
+   in `data`. _On failure:_ Every error shares the envelope in [Errors](../README.md#errors).
+
+Covered by tests at each level: `shared/specs/schemas.spec.ts` (every rule),
+`backend/specs/unit/handlers/http.spec.ts` (`202` + `Location`, `400 VALIDATION_ERROR`, `400 INVALID_JSON`,
+`503 ENQUEUE_FAILED`), and `backend/specs/integration/createAndProcess.spec.ts` (the item really lands in
+DynamoDB Local as `QUEUED`, SMS without a `subject` attribute).

@@ -1,8 +1,8 @@
 # API endpoint design
 
 Field rules and envelopes are in [api-contract-and-validation.md](api-contract-and-validation.md); the
-per-endpoint reference is in the [README](../README.md#api-reference). This document is the _shape_ of the
-API: which endpoints exist, why those and not others, and how each one behaves at the edges.
+per-endpoint reference is in the [README](../README.md#api). This document is the _shape_ of the API: which
+endpoints exist, why those and not others, and how each one behaves at the edges.
 
 ## Resource model
 
