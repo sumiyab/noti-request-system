@@ -592,6 +592,43 @@ noted so the reasoning can be checked.
   anything bigger is rejected before parsing to keep memory and log volume bounded. _Instead of:_ Relying on
   API Gateway's 10 MB limit alone.
 
+#### How DynamoDB is used
+
+One table, keyed by `id`, plus two global secondary indexes. The keys _are_ the data model: the table's
+partition key is a UUID so writes spread across partitions, and each index re-partitions the same items for
+one list shape (full design: [docs/dynamodb-table-design.md](docs/dynamodb-table-design.md)).
+
+| Structure             | Partition key                 | Sort key    | Answers                                                         |
+| --------------------- | ----------------------------- | ----------- | --------------------------------------------------------------- |
+| **Table**             | `id` (UUID v4)                | —           | `GetItem` by id; `PutItem` on create; every status transition   |
+| **GSI `byCreatedAt`** | `entityType` = `NOTIFICATION` | `createdAt` | `GET /notifications` — every request, newest first              |
+| **GSI `byUser`**      | `userId`                      | `createdAt` | `GET /notifications?userId=` — one user's history, newest first |
+
+The API leans on these DynamoDB features specifically:
+
+- **Conditional writes** (`ConditionExpression`) — `attribute_not_exists(id)` on create, and
+  `#status IN (:from…)` on every transition, so a duplicate or late SQS delivery fails the condition instead
+  of moving a request backwards. This is the whole correctness story; no locks or transactions needed.
+- **Atomic counter in the same write** — the claim does `ADD attempts :one` under the condition
+  `attempts < :max`, so counting and capping attempts is one atomic operation enforced by the database.
+- **`ReturnValues: ALL_NEW` and `ReturnValuesOnConditionCheckFailure: ALL_OLD`** — a successful transition
+  returns the new item and a refused one returns the current item, so the service can tell _conflict_ from
+  _not found_ without a second read.
+- **`Query` on the indexes, never `Scan` or `FilterExpression`** — both list shapes are a single `Query` with
+  `ScanIndexForward: false`; `ALL` projection means the list never goes back to the table.
+- **Cursor pagination** — `Limit + 1` and `ExclusiveStartKey`, with the key base64url-encoded as an opaque
+  `nextCursor`, so pages stay stable while new items arrive at the top.
+- **Strongly consistent `GetItem`** — `GET /notifications/{id}` immediately after `POST` always sees the item.
+- **Schemaless, optional attributes omitted** — SMS items have no `subject` attribute; `completedAt`,
+  `providerMessageId`, `lastError` exist only once set. Items are validated on read with the shared schema.
+- **On-demand capacity, point-in-time recovery, SSE-KMS, `Retain` on prod** — no capacity planning, a recovery
+  path, decrypts in CloudTrail, and a stack delete cannot take production data with it.
+- **IAM per action** — read Lambdas get `GetItem`/`Query` only; `Query` is scoped to the two index ARNs; only
+  the create Lambda and the worker can write.
+
+Not used, on purpose: `TransactWriteItems` (single-item updates never need it), `Scan`, `FilterExpression`,
+Streams (the future outbox / history mechanism), TTL (see retention under trade-offs).
+
 #### Why `userId`
 
 A notification is always sent _by someone_ — a product user, a support agent, a scheduled job acting for a
