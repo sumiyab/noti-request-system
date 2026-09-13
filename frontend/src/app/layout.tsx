@@ -14,7 +14,11 @@ export const metadata: Metadata = {
 };
 
 const RootLayout = ({ children }: { children: ReactNode }) => (
-  <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+  <html
+    lang="en"
+    className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    suppressHydrationWarning
+  >
     <body className="bg-background text-foreground flex min-h-full flex-col">
       <Providers>{children}</Providers>
       <Toaster richColors position="top-right" />

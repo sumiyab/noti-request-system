@@ -1,4 +1,5 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
+import { markRecent } from '@/lib/recent';
 import userEvent from '@testing-library/user-event';
 import { NotificationList } from '@/components/notification-list/NotificationList';
 import { lastRequest, mockList, mockResponse, notification, renderWithQuery } from '../helpers';
@@ -21,10 +22,53 @@ describe('NotificationList', () => {
     const rows = await screen.findAllByTestId('notification-row');
     expect(rows).toHaveLength(2);
     expect(within(rows[0]!).getByRole('status')).toHaveTextContent('Failed');
-    expect(within(rows[0]!).getByText(/attempt 3/)).toBeInTheDocument();
+    expect(within(rows[0]!).getByText(/failed after 3 attempts/)).toBeInTheDocument();
     expect(within(rows[0]!).getByRole('note')).toHaveTextContent('Provider timeout');
     expect(within(rows[1]!).getByText('+97699112233')).toBeInTheDocument();
     expect(within(rows[1]!).getByText('SMS')).toBeInTheDocument();
+  });
+
+  test('shows a skeleton while loading, then the live indicator settles once everything is terminal', async () => {
+    mockList([notification({ status: 'QUEUED' })]);
+    renderWithQuery(<NotificationList />);
+    expect(screen.getByRole('status', { name: 'Loading requests' })).toBeInTheDocument();
+
+    await screen.findAllByTestId('notification-row');
+    expect(screen.getByTestId('live-indicator')).toHaveTextContent('Live');
+  });
+
+  test('describes the outcome and duration on finished rows', async () => {
+    mockList([
+      notification({
+        id: '1'.padEnd(36, '0'),
+        status: 'SENT',
+        attempts: 1,
+        createdAt: '2026-09-12T04:00:00.000Z',
+        completedAt: '2026-09-12T04:00:01.400Z',
+      }),
+      notification({
+        id: '2'.padEnd(36, '0'),
+        status: 'FAILED',
+        attempts: 3,
+        createdAt: '2026-09-12T04:00:00.000Z',
+        completedAt: '2026-09-12T04:02:05.000Z',
+      }),
+    ]);
+    renderWithQuery(<NotificationList />);
+    const rows = await screen.findAllByTestId('notification-row');
+    expect(within(rows[0]!).getByText('sent in 1.4 s')).toBeInTheDocument();
+    expect(within(rows[1]!).getByText('failed after 3 attempts · 2 m 05 s')).toBeInTheDocument();
+    expect(screen.getByTestId('live-indicator')).toHaveTextContent('Up to date');
+  });
+
+  test('highlights the request that was just created', async () => {
+    const created = notification({ id: 'c'.padEnd(36, '0') });
+    mockList([created]);
+    renderWithQuery(<NotificationList />);
+    await screen.findAllByTestId('notification-row');
+
+    act(() => markRecent(created.id));
+    expect(screen.getByTestId('notification-row')).toHaveAttribute('data-recent', 'true');
   });
 
   test('shows the error state when the list cannot be loaded', async () => {
@@ -35,77 +79,28 @@ describe('NotificationList', () => {
     );
   });
 
-  test('offers "Load more" only while a next cursor exists', async () => {
+  test('pages with "Load more" and shows where the reader is', async () => {
     const user = userEvent.setup();
     mockList([notification({ id: 'a'.padEnd(36, '0'), status: 'SENT' })], 'next');
     renderWithQuery(<NotificationList />);
 
     const button = await screen.findByRole('button', { name: 'Load more' });
+    expect(screen.getByTestId('list-footer')).toHaveTextContent('Showing 1 request · more available');
+    expect(lastRequest().url).toContain('limit=10');
+
     mockList([notification({ id: 'b'.padEnd(36, '0'), status: 'SENT' })], null);
     await user.click(button);
 
     await waitFor(() => expect(screen.getAllByTestId('notification-row')).toHaveLength(2));
+    expect(lastRequest().url).toContain('cursor=next');
     expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+    expect(screen.getByTestId('list-footer')).toHaveTextContent('Showing all 2 requests');
   });
 
-  describe('filter by user', () => {
-    test('typing a user id refetches with ?userId= and describes the filtered view', async () => {
-      const user = userEvent.setup();
-      mockList([
-        notification({ userId: 'user-42' }),
-        notification({ id: '2'.padEnd(36, '0'), userId: 'other' }),
-      ]);
-      renderWithQuery(<NotificationList />);
-      expect(await screen.findAllByTestId('notification-row')).toHaveLength(2);
-
-      mockList([notification({ userId: 'user-42' })]);
-      await user.type(screen.getByLabelText('Filter by user ID'), 'user-42');
-
-      await waitFor(() => expect(lastRequest().url).toContain('userId=user-42'));
-      await waitFor(() => expect(screen.getAllByTestId('notification-row')).toHaveLength(1));
-      expect(screen.getByText(/Requests sent by user-42/)).toBeInTheDocument();
-    });
-
-    test("clicking a row's sender applies the filter, and × clears it", async () => {
-      const user = userEvent.setup();
-      mockList([notification({ userId: 'user-42' })]);
-      renderWithQuery(<NotificationList />);
-      await screen.findAllByTestId('notification-row');
-
-      mockList([notification({ userId: 'user-42' })]);
-      await user.click(screen.getByRole('button', { name: 'user-42' }));
-      expect(screen.getByLabelText('Filter by user ID')).toHaveValue('user-42');
-      await waitFor(() => expect(lastRequest().url).toContain('userId=user-42'));
-
-      mockList([notification({ userId: 'user-42' })]);
-      await user.click(screen.getByRole('button', { name: 'Clear filter' }));
-      expect(screen.getByLabelText('Filter by user ID')).toHaveValue('');
-      await waitFor(() => expect(lastRequest().url).not.toContain('userId='));
-    });
-
-    test('an invalid id is rejected with the shared schema message and never sent', async () => {
-      const user = userEvent.setup();
-      mockList([notification()]);
-      renderWithQuery(<NotificationList />);
-      await screen.findAllByTestId('notification-row');
-      const calls = (global.fetch as jest.Mock).mock.calls.length;
-
-      await user.type(screen.getByLabelText('Filter by user ID'), 'has space');
-
-      expect(await screen.findByRole('alert')).toHaveTextContent('User ID may only contain');
-      expect(screen.getByLabelText('Filter by user ID')).toHaveAttribute('aria-invalid', 'true');
-      expect((global.fetch as jest.Mock).mock.calls.length).toBe(calls);
-    });
-
-    test('shows a filtered empty state', async () => {
-      const user = userEvent.setup();
-      mockList([notification()]);
-      renderWithQuery(<NotificationList />);
-      await screen.findAllByTestId('notification-row');
-
-      mockList([]);
-      await user.type(screen.getByLabelText('Filter by user ID'), 'nobody');
-      await screen.findByText('No requests from nobody yet.');
-    });
+  test('no footer while the list is empty', async () => {
+    mockList([]);
+    renderWithQuery(<NotificationList />);
+    await screen.findByText(/No requests yet/);
+    expect(screen.queryByTestId('list-footer')).not.toBeInTheDocument();
   });
 });

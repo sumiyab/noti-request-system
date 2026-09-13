@@ -7,6 +7,8 @@ import { queryKeys } from '@/lib/queryKeys';
 import type { ListNotificationsResponse } from '@/schemas';
 
 export const POLL_INTERVAL_MS = 2000;
+/** Smaller than the API default (20) so the list pages visibly with modest data. */
+export const PAGE_SIZE = 10;
 
 type Pages = { pages: ListNotificationsResponse[] };
 
@@ -20,7 +22,7 @@ const hasInFlight = (data: Pages | undefined) =>
 export const useNotifications = (filter: { userId?: string } = {}) =>
   useInfiniteQuery({
     queryKey: queryKeys.notifications.list(filter),
-    queryFn: ({ pageParam }) => api.list({ cursor: pageParam, ...filter }),
+    queryFn: ({ pageParam }) => api.list({ cursor: pageParam, limit: PAGE_SIZE, ...filter }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     refetchInterval: (query) => (hasInFlight(query.state.data) ? POLL_INTERVAL_MS : false),

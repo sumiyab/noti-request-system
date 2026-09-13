@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { FieldError, FieldGroup } from '@/components/ui/field';
 import { useCreateNotification } from '@/hooks/useCreateNotification';
+import { markRecent, rowElementId } from '@/lib/recent';
 import { createNotificationSchema, type CreateNotificationInput } from '@/schemas';
 import { ChannelField } from './ChannelField';
 import { MessageFields } from './MessageFields';
@@ -47,11 +48,21 @@ export const NotificationForm = () => {
 
   const onSubmit = form.handleSubmit((values) =>
     create.mutate(values, {
-      onSuccess: () => {
+      onSuccess: ({ data }) => {
         // The same user usually sends several requests on the same channel, so only the message-specific
         // fields clear.
         form.reset({ ...DEFAULTS, userId: values.userId, channel: values.channel });
-        toast.success('Request accepted', { description: 'It has been queued for delivery.' });
+        markRecent(data.id);
+        toast.success('Request accepted', {
+          description: 'It has been queued for delivery.',
+          action: {
+            label: 'View',
+            onClick: () =>
+              document
+                .getElementById(rowElementId(data.id))
+                ?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+          },
+        });
       },
       onError: (error) => {
         if (error.code !== 'VALIDATION_ERROR') return; // generic errors are toasted globally
