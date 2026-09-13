@@ -1,24 +1,22 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { FieldError, FieldGroup } from '@/components/ui/field';
 import { useCreateNotification } from '@/hooks/useCreateNotification';
 import { createNotificationSchema, type CreateNotificationInput } from '@/schemas';
+import { ChannelField } from './ChannelField';
 import { MessageFields } from './MessageFields';
 import { RecipientField } from './RecipientField';
 import type { NotificationFormValues } from './types';
 import { UserIdField } from './UserIdField';
 
-/** The form submits email requests; the API and the list support SMS and PUSH as well. */
-const CHANNEL = 'EMAIL';
-
 const DEFAULTS: NotificationFormValues = {
   userId: '',
-  channel: CHANNEL,
+  channel: 'EMAIL',
   recipient: '',
   subject: '',
   message: '',
@@ -44,13 +42,15 @@ export const NotificationForm = () => {
     shouldUnregister: true,
   });
   const create = useCreateNotification();
+  const channel = useWatch({ control: form.control, name: 'channel' });
   const pending = create.isPending;
 
   const onSubmit = form.handleSubmit((values) =>
     create.mutate(values, {
       onSuccess: () => {
-        // The same user usually sends several requests, so only the message-specific fields clear.
-        form.reset({ ...DEFAULTS, userId: values.userId });
+        // The same user usually sends several requests on the same channel, so only the message-specific
+        // fields clear.
+        form.reset({ ...DEFAULTS, userId: values.userId, channel: values.channel });
         toast.success('Request accepted', { description: 'It has been queued for delivery.' });
       },
       onError: (error) => {
@@ -68,15 +68,17 @@ export const NotificationForm = () => {
     <Card>
       <CardHeader>
         <CardTitle>New request</CardTitle>
-        <CardDescription>Fill in who is sending, the recipient, subject, and message.</CardDescription>
+        <CardDescription>
+          Choose a channel and fill in who is sending, the recipient, and the message.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={(event) => void onSubmit(event)} noValidate aria-busy={pending}>
           <FieldGroup>
-            <input type="hidden" {...form.register('channel')} />
             <UserIdField {...fieldProps} disabled={pending} />
-            <RecipientField {...fieldProps} channel={CHANNEL} disabled={pending} />
-            <MessageFields {...fieldProps} channel={CHANNEL} disabled={pending} />
+            <ChannelField {...fieldProps} disabled={pending} />
+            <RecipientField {...fieldProps} channel={channel} disabled={pending} />
+            <MessageFields {...fieldProps} channel={channel} disabled={pending} />
             <FieldError errors={[form.formState.errors.root?.server]} />
             <Button type="submit" disabled={pending} className="w-full">
               {pending ? 'Submitting…' : 'Send notification'}

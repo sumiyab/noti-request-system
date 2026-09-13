@@ -3,9 +3,9 @@
 A small full-stack **serverless** application for submitting notification requests and tracking them through
 an **asynchronous processing pipeline**.
 
-- **Frontend** — Next.js (App Router) + TypeScript, statically exported: submit an email request on behalf of
-  a user, get instant validation feedback, watch its status change live, and filter the list to one user. (The
-  API accepts SMS and PUSH too; the form keeps to one channel by choice.)
+- **Frontend** — Next.js (App Router) + TypeScript, statically exported: submit an email, SMS, or push request
+  on behalf of a user, get instant validation feedback, watch its status change live, and filter the list to
+  one user.
 - **Backend** — TypeScript on AWS Lambda (Node.js 22), deployed with Serverless Framework v4: API Gateway
   (HTTP API) → Lambda → DynamoDB, with SQS driving asynchronous processing.
 - **Tooling** — [Bun](https://bun.sh) workspaces for installs, scripts, tests, and the local runner;
@@ -629,6 +629,13 @@ that signed-in identity, which is why it survives a successful submit while the 
   switching users never shows another user's cached page and polling keeps working per filter. A row's sender
   is clickable for the same reason people filter: "show me the rest of this user's history". _Instead of:_
   Filtering the loaded pages in the browser: only sees what is already fetched, and breaks the cursor.
+- **One form for three channels, driven by a radio group** — Email / SMS / Push are three fixed,
+  always-visible options, so a `RadioGroup` beats a `Select` (nothing hidden, no pointer-event shims in
+  tests). The other fields read the chosen channel and adapt: recipient label, input type and hint; subject
+  present (email), renamed to title (push), or unmounted (SMS) so the strict SMS schema receives no `subject`
+  key. The chosen channel and user id survive a successful submit; only the message-specific fields clear.
+  _Instead of:_ One form per channel: three copies of the same submit/error logic. A fixed single channel:
+  simpler, but hides two thirds of the API the list already renders.
 - **react-hook-form + zod resolver** (full design:
   [docs/frontend-design.md](docs/frontend-design.md#form--react-hook-form--zod)) — The shared schema is the
   resolver, so the form validates with exactly the API's rules; server-side `details[]` map onto fields with
@@ -686,8 +693,9 @@ flowchart TB
 - **`backend/specs/integration`** — The real pipeline against DynamoDB Local + ElasticMQ: create → queued →
   processed → `SENT`/`FAILED`, pagination across pages, conditional-update conflicts, and that only failed
   batch items are redelivered. _(`bun run test:integration` (Jest, `--runInBand`) after `docker compose up`.)_
-- **`frontend/specs`** — Form validation and error mapping, success/error toasts, list rendering and status
-  badges, polling start/stop, the user filter (typed and via a row, cleared, invalid input blocked
+- **`frontend/specs`** — Form validation and error mapping, channel switching (SMS drops the subject from the
+  DOM and the request; the chosen channel and user id survive a submit), success/error toasts, list rendering
+  and status badges, polling start/stop, the user filter (typed and via a row, cleared, invalid input blocked
   client-side, filtered empty state), the create hook prepending into exactly the lists that should show the
   new item, the API client's error handling — with the API mocked at the `fetch` boundary. _(Jest + Testing
   Library (`jsdom`), real `QueryClient` per test.)_
@@ -729,7 +737,30 @@ and a real deploy), and pixel-level UI.
   concentrates the index on one partition. DynamoDB handles this comfortably at thousands of writes per
   second; beyond that the key would be sharded by date.
 - **Polling costs one `Query` per open browser every 2 s while a request is in flight.** Fine for a small user
-  base; not how a high-traffic dashboard would be built.
+  base; not how a high-traffic dashboard would be built. See _Scale_ below for the numbers.
+- **Scale — what this stack handles today, and what gives first.** The write path is horizontal (DynamoDB
+  on-demand, SQS, Lambda) and every transition is idempotent, so 100k users _over a day_ is comfortable. 100k
+  users _at the same moment_ is not, and the limits are known and in this order:
+  1. **The API throttle** — 10 req/s, burst 20 on the HTTP API stage. A deliberate guard for an
+     unauthenticated demo endpoint, not a capacity figure; it is one line (`ThrottlingRateLimit`) and the
+     account default is 10 000 req/s. Under real load, per-client limits belong to WAF or a usage plan behind
+     an authorizer.
+  2. **Polling** — 100k open browsers polling every 2 s is 50 000 `Query`/s. This is the architectural
+     ceiling: the fix is backoff (2 → 5 → 15 s) and per-item polling for one's own in-flight requests short
+     term, and push (WebSocket API or SSE fed by a DynamoDB Stream) at scale.
+  3. **Lambda concurrency** — an account quota (400 in the dev account) shared by all four functions; the API
+     is one invocation per request. Raising it is a quota request to AWS, not a code change; 10 000+ is
+     routine. Provisioned concurrency would flatten cold starts at a known peak.
+  4. **The `byCreatedAt` index** — one constant partition key caps the global newest-first list at roughly 1
+     000 writes/s. Either shard the key by time bucket (`NOTIFICATION#2026-09-13T14`) or, once there is an
+     authorizer, drop the global list altogether: users see their own history via `byUser`, whose key is
+     naturally spread.
+  5. **Worker throughput** — reserved concurrency 5 × batch 10 at ~1 s per send ≈ 50 sends/s, so 100k queued
+     requests drain in ~35 minutes. The number is chosen to sit under a provider's rate limit (SES and SNS SMS
+     defaults are in the tens to low hundreds per second per account); raise it with the provider's quota —
+     the provider, not this stack, is the real ceiling on sends.
+  6. **Not a concern** — DynamoDB on-demand (UUID table key spreads writes; tens of thousands of WCU/RCU on
+     demand), SQS standard (effectively unlimited), the Lambda code itself (stateless, ~70–100 ms warm).
 - **The provider is simulated.** Nothing is delivered. Delivery receipts, bounces, and provider-side
   idempotency are outside the scope.
 - **Tests run under Bun, production runs under Node 22.** The code uses only standard Web/Node APIs that both

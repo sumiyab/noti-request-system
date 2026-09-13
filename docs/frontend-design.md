@@ -15,7 +15,7 @@ Library** test it.
 | Form                      | react-hook-form 7 + `@hookform/resolvers/zod`                       | The shared zod schema is the resolver, so the form validates with exactly the API's rules; RHF handles registration, dirty/pending state, and per-field errors (including ones set from the server). |
 | Validation                | zod 4 (`@noti/shared`)                                              | One schema for form, API, and types.                                                                                                                                                                 |
 | Styling                   | Tailwind CSS 4                                                      | Utility classes, CSS-first config (`@import "tailwindcss"` + `@theme` in `globals.css`), no `tailwind.config`.                                                                                       |
-| Components                | shadcn/ui                                                           | Copied into `src/components/ui/`, not a dependency: Button, Input, Textarea, Label, Field, Badge, Card, Sonner. Accessible (Radix) and ours to edit.                                                 |
+| Components                | shadcn/ui                                                           | Copied into `src/components/ui/`, not a dependency: Button, Input, Textarea, Label, Field, RadioGroup, Badge, Card, Sonner. Accessible (Radix) and ours to edit.                                     |
 | Toasts                    | shadcn `Sonner`                                                     | Already part of the kit.                                                                                                                                                                             |
 | Package manager / scripts | Bun                                                                 | `bun install`, `bun run …`. Bun respects the `#!/usr/bin/env node` shebang of `jest` and `next`, so both run on Node exactly as in CI.                                                               |
 | Lint                      | ESLint 9 (flat config) + `typescript-eslint` + `eslint-config-next` | Rules below. ESLint 9, not 10: `eslint-config-next`'s plugins (`eslint-plugin-react`) still use APIs removed in 10.                                                                                  |
@@ -44,8 +44,9 @@ frontend/
     │   └── globals.css         @import "tailwindcss"; shadcn theme tokens; status colour tokens
     ├── components/
     │   ├── notification-form/
-    │   │   ├── NotificationForm.tsx     useForm + zodResolver, submit, server errors → setError (channel fixed to EMAIL)
+    │   │   ├── NotificationForm.tsx     useForm + zodResolver, submit, server errors → setError
     │   │   ├── UserIdField.tsx          who is sending; kept across submissions (stand-in for a signed-in user)
+    │   │   ├── ChannelField.tsx         Email / SMS / Push radio group; the other fields follow the choice
     │   │   ├── RecipientField.tsx       label, hint and input type per channel
     │   │   └── MessageFields.tsx        subject (unmounted for SMS) + message with counter
     │   ├── notification-list/
@@ -111,6 +112,7 @@ flowchart LR
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
 | `NotificationForm`                 | `useForm({ resolver: zodResolver(createNotificationSchema) })`, `handleSubmit → mutate`, server `details[]` → `setError`, `isSubmitting`/`isPending` on the button, `reset()` on success (keeping `userId`) | render the fields' markup (delegated), talk to `fetch` |
 | `UserIdField`                      | the sender's id; the demo's stand-in for a signed-in user — with an authorizer the field goes away and the token supplies it                                                                                | hold state                                             |
+| `ChannelField`                     | the Email / SMS / Push radio group (`Controller` over a Radix `RadioGroup`); `RecipientField` and `MessageFields` read the watched value and swap labels, hints, limits and the subject field accordingly   | know what each channel needs (the fields do)           |
 | `RecipientField` / `MessageFields` | markup via shadcn `Field*`, per-channel labels/hints/limits, character counters from `useWatch()`                                                                                                           | hold state (they receive `control` / `register`)       |
 | `NotificationList`                 | loading / empty / error states, mapping pages to rows, the load-more button, the user filter (debounced 300 ms, validated with `userIdSchema`, passed to `useNotifications`)                                | polling logic (in the hook)                            |
 | `UserFilter`                       | the search input, its clear button, and the inline validation message                                                                                                                                       | state (controlled by the list)                         |

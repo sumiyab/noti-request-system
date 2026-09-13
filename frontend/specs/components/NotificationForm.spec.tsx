@@ -48,6 +48,41 @@ describe('NotificationForm', () => {
     });
   });
 
+  test('switching to SMS removes the subject field and omits it from the request', async () => {
+    const user = userEvent.setup();
+    mockResponse(202, {
+      data: notification({ channel: 'SMS', recipient: '+97699112233', subject: undefined }),
+    });
+    mockList([]);
+    renderWithQuery(<NotificationForm />);
+
+    expect(screen.getByLabelText('Subject')).toBeInTheDocument();
+    await user.click(screen.getByRole('radio', { name: 'SMS' }));
+    expect(screen.queryByLabelText('Subject')).not.toBeInTheDocument();
+
+    await fill(user, { 'User ID': 'user-42', 'Phone number': '+97699112233', Message: 'Hello' });
+    await user.click(screen.getByRole('button', { name: 'Send notification' }));
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    const body = JSON.parse(lastRequest().init?.body as string) as Record<string, unknown>;
+    expect(body).toEqual({ userId: 'user-42', channel: 'SMS', recipient: '+97699112233', message: 'Hello' });
+  });
+
+  test('keeps the chosen channel and user id after a successful submit', async () => {
+    const user = userEvent.setup();
+    mockResponse(202, { data: notification({ channel: 'PUSH', recipient: 'fcm-token:abc123' }) });
+    mockList([]);
+    renderWithQuery(<NotificationForm />);
+
+    await user.click(screen.getByRole('radio', { name: 'Push' }));
+    await fill(user, { 'User ID': 'user-42', 'Device token': 'fcm-token:abc123', Title: 'Hi', Message: 'x' });
+    await user.click(screen.getByRole('button', { name: 'Send notification' }));
+
+    await waitFor(() => expect(screen.getByLabelText('Device token')).toHaveValue(''));
+    expect(screen.getByRole('radio', { name: 'Push' })).toBeChecked();
+    expect(screen.getByLabelText('User ID')).toHaveValue('user-42');
+  });
+
   test('maps a server VALIDATION_ERROR onto the right field', async () => {
     const user = userEvent.setup();
     mockResponse(400, {
